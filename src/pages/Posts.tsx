@@ -16,6 +16,15 @@ interface Post {
   description: string;
   status: string;
   scheduled_at: string | null;
+  type_of_post: string | null;
+  platforms: string[] | null;
+  account_type: string | null;
+  text: string | null;
+  image: string | null;
+  video: string | null;
+  pdf: string | null;
+  url: string | null;
+  tags: string[] | null;
   created_at: string;
 }
 
@@ -95,22 +104,48 @@ export default function Posts() {
               <Card key={post.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg">{post.title}</CardTitle>
+                    <CardTitle className="text-lg">{post.title || "Untitled"}</CardTitle>
                     <Badge className={getStatusColor(post.status)}>
                       {post.status}
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                    {post.description}
-                  </p>
-                  {post.scheduled_at && (
-                    <p className="text-xs text-muted-foreground mb-4">
-                      Scheduled: {format(new Date(post.scheduled_at), "PPp")}
+                <CardContent className="space-y-3">
+                  {post.type_of_post && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Type:</span> {post.type_of_post}
                     </p>
                   )}
-                  <div className="flex gap-2">
+                  {post.platforms && post.platforms.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Platforms:</span> {post.platforms.join(", ")}
+                    </p>
+                  )}
+                  {post.text && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {post.text}
+                    </p>
+                  )}
+                  {post.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {post.description}
+                    </p>
+                  )}
+                  {post.tags && post.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {post.tags.map((tag, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {post.scheduled_at && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Scheduled:</span> {format(new Date(post.scheduled_at), "PPp")}
+                    </p>
+                  )}
+                  <div className="flex gap-2 pt-2">
                     <Button
                       size="sm"
                       variant="outline"
