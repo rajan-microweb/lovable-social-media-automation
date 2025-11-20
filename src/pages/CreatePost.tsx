@@ -14,8 +14,6 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 const postSchema = z.object({
-  title: z.string().min(1, "Title is required").max(200),
-  description: z.string().max(2000).optional(),
   type_of_post: z.string().optional(),
   platforms: z.array(z.string()).optional(),
   account_type: z.string().optional(),
@@ -23,6 +21,8 @@ const postSchema = z.object({
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   pdf: z.string().url().optional().or(z.literal("")),
+  title: z.string().min(1, "Title is required").max(200),
+  description: z.string().max(2000).optional(),
   url: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
   status: z.enum(["draft", "scheduled", "published"]),
@@ -70,8 +70,6 @@ export default function CreatePost() {
 
     const formData = new FormData(e.currentTarget);
     const data = {
-      title: formData.get("title") as string,
-      description: formData.get("description") as string,
       type_of_post: formData.get("type_of_post") as string,
       platforms: platforms.length > 0 ? platforms : null,
       account_type: formData.get("account_type") as string,
@@ -79,6 +77,8 @@ export default function CreatePost() {
       image: formData.get("image") as string,
       video: formData.get("video") as string,
       pdf: formData.get("pdf") as string,
+      title: formData.get("title") as string,
+      description: formData.get("description") as string,
       url: formData.get("url") as string,
       tags: tags.length > 0 ? tags : null,
       status: formData.get("status") as string,
@@ -90,8 +90,6 @@ export default function CreatePost() {
 
       const { error } = await supabase.from("posts").insert({
         user_id: user!.id,
-        title: data.title,
-        description: data.description || null,
         type_of_post: data.type_of_post || null,
         platforms: data.platforms,
         account_type: data.account_type || null,
@@ -99,6 +97,8 @@ export default function CreatePost() {
         image: data.image || null,
         video: data.video || null,
         pdf: data.pdf || null,
+        title: data.title,
+        description: data.description || null,
         url: data.url || null,
         tags: data.tags,
         status: data.status,
@@ -137,13 +137,7 @@ export default function CreatePost() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="title">Title *</Label>
-                  <Input
-                    id="title"
-                    name="title"
-                    placeholder="Post title"
-                    required
-                    maxLength={200}
-                  />
+                  <Input id="title" name="title" placeholder="Post title" required maxLength={200} />
                 </div>
 
                 <div className="space-y-2">
@@ -172,9 +166,7 @@ export default function CreatePost() {
                       <Checkbox
                         id={platform.value}
                         checked={platforms.includes(platform.value)}
-                        onCheckedChange={(checked) =>
-                          handlePlatformChange(platform.value, checked as boolean)
-                        }
+                        onCheckedChange={(checked) => handlePlatformChange(platform.value, checked as boolean)}
                       />
                       <Label htmlFor={platform.value} className="cursor-pointer">
                         {platform.label}
@@ -200,13 +192,7 @@ export default function CreatePost() {
 
               <div className="space-y-2">
                 <Label htmlFor="text">Content Text</Label>
-                <Textarea
-                  id="text"
-                  name="text"
-                  placeholder="Post content..."
-                  rows={6}
-                  maxLength={5000}
-                />
+                <Textarea id="text" name="text" placeholder="Post content..." rows={6} maxLength={5000} />
               </div>
 
               <div className="space-y-2">
@@ -223,42 +209,22 @@ export default function CreatePost() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="image">Image URL</Label>
-                  <Input
-                    id="image"
-                    name="image"
-                    type="url"
-                    placeholder="https://example.com/image.jpg"
-                  />
+                  <Input id="image" name="image" type="url" placeholder="https://example.com/image.jpg" />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="video">Video URL</Label>
-                  <Input
-                    id="video"
-                    name="video"
-                    type="url"
-                    placeholder="https://example.com/video.mp4"
-                  />
+                  <Input id="video" name="video" type="url" placeholder="https://example.com/video.mp4" />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="pdf">PDF URL</Label>
-                  <Input
-                    id="pdf"
-                    name="pdf"
-                    type="url"
-                    placeholder="https://example.com/document.pdf"
-                  />
+                  <Input id="pdf" name="pdf" type="url" placeholder="https://example.com/document.pdf" />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="url">Article URL</Label>
-                  <Input
-                    id="url"
-                    name="url"
-                    type="url"
-                    placeholder="https://example.com/article"
-                  />
+                  <Input id="url" name="url" type="url" placeholder="https://example.com/article" />
                 </div>
               </div>
 
@@ -288,11 +254,7 @@ export default function CreatePost() {
                         className="bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm flex items-center gap-2"
                       >
                         {tag}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTag(tag)}
-                          className="hover:text-destructive"
-                        >
+                        <button type="button" onClick={() => handleRemoveTag(tag)} className="hover:text-destructive">
                           ×
                         </button>
                       </div>
@@ -318,11 +280,7 @@ export default function CreatePost() {
 
                 <div className="space-y-2">
                   <Label htmlFor="scheduled_at">Scheduled Date</Label>
-                  <Input
-                    id="scheduled_at"
-                    name="scheduled_at"
-                    type="datetime-local"
-                  />
+                  <Input id="scheduled_at" name="scheduled_at" type="datetime-local" />
                 </div>
               </div>
 
@@ -330,11 +288,7 @@ export default function CreatePost() {
                 <Button type="submit" disabled={loading}>
                   {loading ? "Creating..." : "Create Post"}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate("/posts")}
-                >
+                <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
                   Cancel
                 </Button>
               </div>
