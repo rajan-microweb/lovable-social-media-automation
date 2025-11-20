@@ -16,37 +16,61 @@ export type Database = {
     Tables: {
       posts: {
         Row: {
+          account_type: string | null
           created_at: string
           description: string | null
           id: string
-          media_url: string | null
+          image: string | null
+          pdf: string | null
+          platforms: string[] | null
           scheduled_at: string | null
           status: string
+          tags: string[] | null
+          text: string | null
           title: string
+          type_of_post: string | null
           updated_at: string
+          url: string | null
           user_id: string
+          video: string | null
         }
         Insert: {
+          account_type?: string | null
           created_at?: string
           description?: string | null
           id?: string
-          media_url?: string | null
+          image?: string | null
+          pdf?: string | null
+          platforms?: string[] | null
           scheduled_at?: string | null
           status?: string
+          tags?: string[] | null
+          text?: string | null
           title: string
+          type_of_post?: string | null
           updated_at?: string
+          url?: string | null
           user_id: string
+          video?: string | null
         }
         Update: {
+          account_type?: string | null
           created_at?: string
           description?: string | null
           id?: string
-          media_url?: string | null
+          image?: string | null
+          pdf?: string | null
+          platforms?: string[] | null
           scheduled_at?: string | null
           status?: string
+          tags?: string[] | null
+          text?: string | null
           title?: string
+          type_of_post?: string | null
           updated_at?: string
+          url?: string | null
           user_id?: string
+          video?: string | null
         }
         Relationships: [
           {
