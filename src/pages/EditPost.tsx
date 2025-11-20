@@ -71,6 +71,11 @@ export default function EditPost() {
   const [aiModalField, setAiModalField] = useState<"text" | "image" | "video" | "pdf">("text");
   const [aiModalTarget, setAiModalTarget] = useState<string>("");
 
+  // AI-generated URLs
+  const [imageUrl, setImageUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [pdfUrl, setPdfUrl] = useState("");
+
   // Available platforms based on post type
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
 
@@ -174,18 +179,16 @@ export default function EditPost() {
     } else if (aiModalTarget === "youtubeDescription") {
       setYoutubeDescription(content);
     } else if (aiModalTarget === "media") {
-      // For media, content is a URL - we need to fetch and convert to File
-      try {
-        const response = await fetch(content);
-        const blob = await response.blob();
-        const filename = content.split("/").pop() || "generated-file";
-        const file = new File([blob], filename, { type: blob.type });
-        setMediaFile(file);
-        toast.success("AI-generated media loaded");
-      } catch (error) {
-        console.error("Error loading AI media:", error);
-        toast.error("Failed to load AI-generated media");
+      // For media, content is a URL from AI - store it directly
+      if (typeOfPost === "image" || typeOfPost === "carousel") {
+        setImageUrl(content);
+      } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+        setVideoUrl(content);
+      } else if (typeOfPost === "pdf") {
+        setPdfUrl(content);
       }
+      setMediaFile(null); // Clear file if URL is set
+      toast.success("AI-generated media URL loaded");
     }
   };
 
@@ -213,9 +216,20 @@ export default function EditPost() {
     setUploading(true);
 
     try {
-      // Upload new file if present, otherwise keep existing media
+      // Priority: AI URLs > new file upload > existing media
       let uploadedUrl = existingMediaUrl;
-      if (mediaFile) {
+      
+      // Check for AI-generated URLs first
+      if (imageUrl || videoUrl || pdfUrl) {
+        if (typeOfPost === "image" || typeOfPost === "carousel") {
+          uploadedUrl = imageUrl;
+        } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+          uploadedUrl = videoUrl;
+        } else if (typeOfPost === "pdf") {
+          uploadedUrl = pdfUrl;
+        }
+      } else if (mediaFile) {
+        // Upload new file if present
         let folder = "";
         if (typeOfPost === "image" || typeOfPost === "carousel") {
           folder = "images";
@@ -557,7 +571,13 @@ export default function EditPost() {
                   <Input
                     id="mediaFile"
                     type="file"
-                    onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      setMediaFile(e.target.files?.[0] || null);
+                      // Clear AI URLs when file is selected
+                      setImageUrl("");
+                      setVideoUrl("");
+                      setPdfUrl("");
+                    }}
                     accept={
                       typeOfPost === "image" || typeOfPost === "carousel"
                         ? "image/*"
@@ -572,6 +592,86 @@ export default function EditPost() {
                     <p className="text-sm text-muted-foreground">
                       New file selected: {mediaFile.name}
                     </p>
+                  )}
+                  
+                  {/* Media Preview */}
+                  {(mediaFile || imageUrl || videoUrl || pdfUrl) && (
+                    <div className="mt-3 p-3 border rounded-lg bg-muted/30">
+                      <p className="text-sm font-medium mb-2">Preview:</p>
+                      
+                      {/* Image Preview */}
+                      {(typeOfPost === "image" || typeOfPost === "carousel") && (
+                        <>
+                          {mediaFile && (
+                            <img 
+                              src={URL.createObjectURL(mediaFile)} 
+                              alt="Preview" 
+                              className="max-h-48 rounded-md object-contain"
+                            />
+                          )}
+                          {imageUrl && (
+                            <img 
+                              src={imageUrl} 
+                              alt="AI Generated Preview" 
+                              className="max-h-48 rounded-md object-contain"
+                            />
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Video Preview */}
+                      {(typeOfPost === "video" || typeOfPost === "shorts") && (
+                        <>
+                          {mediaFile && (
+                            <video 
+                              src={URL.createObjectURL(mediaFile)} 
+                              controls 
+                              className="max-h-48 rounded-md"
+                            />
+                          )}
+                          {videoUrl && (
+                            <video 
+                              src={videoUrl} 
+                              controls 
+                              className="max-h-48 rounded-md"
+                            />
+                          )}
+                        </>
+                      )}
+                      
+                      {/* PDF Preview */}
+                      {typeOfPost === "pdf" && (
+                        <>
+                          {mediaFile && (
+                            <div className="flex items-center gap-2 p-3 bg-background rounded-md">
+                              <div className="text-2xl">📄</div>
+                              <div>
+                                <p className="text-sm font-medium">{mediaFile.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {(mediaFile.size / 1024).toFixed(2)} KB
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {pdfUrl && (
+                            <div className="flex items-center gap-2 p-3 bg-background rounded-md">
+                              <div className="text-2xl">📄</div>
+                              <div>
+                                <p className="text-sm font-medium">AI Generated PDF</p>
+                                <a 
+                                  href={pdfUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  View PDF
+                                </a>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   )}
                   {(typeOfPost === "video") && (platforms.includes("facebook") || platforms.includes("instagram")) && (
                     <p className="text-sm text-blue-600">
