@@ -469,9 +469,25 @@ export default function CreatePost() {
               {/* Media Upload - Show for image, carousel, video, shorts, pdf */}
               {showMediaUpload && (
                 <div className="space-y-2">
-                  <Label htmlFor="mediaFile">
-                    {getMediaLabel()} <span className="text-destructive">*</span>
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="mediaFile">
+                      {getMediaLabel()} <span className="text-destructive">*</span>
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal(
+                        typeOfPost === "pdf" ? "pdf" : 
+                        (typeOfPost === "video" || typeOfPost === "shorts") ? "video" : "image",
+                        "media"
+                      )}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
                   <Input
                     id="mediaFile"
                     type="file"
