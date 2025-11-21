@@ -22,6 +22,7 @@ export function AppSidebar() {
   const mainItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Posts", url: "/posts", icon: FileText },
+    { title: "Stories", url: "/stories", icon: FileText },
   ];
 
   const adminItems = isAdmin

@@ -103,6 +103,54 @@ export type Database = {
         }
         Relationships: []
       }
+      stories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          image: string | null
+          platforms: string[] | null
+          scheduled_at: string | null
+          status: string
+          text: string | null
+          title: string
+          type_of_story: string | null
+          updated_at: string
+          user_id: string
+          video: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image?: string | null
+          platforms?: string[] | null
+          scheduled_at?: string | null
+          status?: string
+          text?: string | null
+          title: string
+          type_of_story?: string | null
+          updated_at?: string
+          user_id: string
+          video?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image?: string | null
+          platforms?: string[] | null
+          scheduled_at?: string | null
+          status?: string
+          text?: string | null
+          title?: string
+          type_of_story?: string | null
+          updated_at?: string
+          user_id?: string
+          video?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string

@@ -11,6 +11,9 @@ import Dashboard from "./pages/Dashboard";
 import Posts from "./pages/Posts";
 import CreatePost from "./pages/CreatePost";
 import EditPost from "./pages/EditPost";
+import Stories from "./pages/Stories";
+import CreateStory from "./pages/CreateStory";
+import EditStory from "./pages/EditStory";
 import AdminUsers from "./pages/AdminUsers";
 import NotFound from "./pages/NotFound";
 
@@ -55,6 +58,30 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <EditPost />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/stories"
+              element={
+                <ProtectedRoute>
+                  <Stories />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/stories/create"
+              element={
+                <ProtectedRoute>
+                  <CreateStory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/stories/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <EditStory />
                 </ProtectedRoute>
               }
             />
