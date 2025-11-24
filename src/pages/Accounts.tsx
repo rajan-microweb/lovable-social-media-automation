@@ -6,6 +6,7 @@ import { Facebook, Instagram, Linkedin, Twitter } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SocialAccount {
   id: string;
@@ -17,6 +18,7 @@ interface SocialAccount {
 }
 
 export default function Accounts() {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<SocialAccount[]>([
     {
       id: "1",
@@ -116,7 +118,12 @@ export default function Accounts() {
 
   const handleConnect = (accountId: string, platform: string) => {
     if (platform === "LinkedIn") {
-      const oauthUrl = "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&scope=w_member_social%20w_organization_social%20openid%20profile%20email";
+      if (!user?.id) {
+        toast.error("Please log in to connect your account");
+        return;
+      }
+
+      const oauthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&scope=w_member_social%20w_organization_social%20openid%20profile%20email&state=${user.id}`;
       
       // Open OAuth in popup window
       const width = 600;
