@@ -1,0 +1,71 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const body = await req.json();
+    const { platform_name, user_id, credentials } = body;
+
+    console.log('Storing platform integration:', { platform_name, user_id });
+
+    if (!platform_name || !user_id || !credentials) {
+      console.error('Missing required fields');
+      return new Response(
+        JSON.stringify({ error: 'platform_name, user_id, and credentials are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Upsert the platform integration (insert or update if exists)
+    const { data, error } = await supabase
+      .from('platform_integrations')
+      .upsert({
+        user_id,
+        platform_name,
+        credentials,
+        status: 'active',
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,platform_name'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error storing integration:', error);
+      return new Response(
+        JSON.stringify({ error: error.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Platform integration stored successfully:', data);
+
+    return new Response(
+      JSON.stringify({ success: true, data }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error in store-platform-integration function:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});

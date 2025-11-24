@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.delete-media]
 verify_jwt = false
+
+[functions.store-platform-integration]
+verify_jwt = false
