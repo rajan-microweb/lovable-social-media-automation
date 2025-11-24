@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      platform_integrations: {
+        Row: {
+          created_at: string
+          credentials: Json
+          id: string
+          platform_name: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credentials: Json
+          id?: string
+          platform_name: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credentials?: Json
+          id?: string
+          platform_name?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       posts: {
         Row: {
           account_type: string | null
