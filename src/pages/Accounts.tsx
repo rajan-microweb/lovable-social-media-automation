@@ -52,8 +52,36 @@ export default function Accounts() {
   ]);
 
   const handleConnect = (accountId: string, platform: string) => {
-    toast.success(`Connecting to ${platform}...`);
-    // Placeholder for actual connection logic
+    if (platform === "LinkedIn") {
+      const oauthUrl = "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&scope=w_member_social%20w_organization_social%20openid%20profile%20email";
+      
+      // Open OAuth in new tab
+      const authWindow = window.open(oauthUrl, "_blank");
+      
+      // Poll to check if authentication is complete
+      const checkAuth = setInterval(() => {
+        const linkedInConnected = localStorage.getItem("linkedin_connected");
+        if (linkedInConnected === "true") {
+          setAccounts((prev) =>
+            prev.map((acc) =>
+              acc.platform === "LinkedIn"
+                ? { ...acc, isConnected: true, accountName: "LinkedIn Account" }
+                : acc
+            )
+          );
+          localStorage.removeItem("linkedin_connected");
+          toast.success("Successfully connected to LinkedIn!");
+          clearInterval(checkAuth);
+        }
+      }, 1000);
+      
+      // Stop checking after 5 minutes
+      setTimeout(() => clearInterval(checkAuth), 300000);
+      
+      toast.success("Opening LinkedIn authentication...");
+    } else {
+      toast.success(`Connecting to ${platform}...`);
+    }
   };
 
   const handleDisconnect = (accountId: string, platform: string) => {
