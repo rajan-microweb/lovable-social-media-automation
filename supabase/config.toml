@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.get-platform-integration]
 verify_jwt = false
+
+[functions.update-platform-integration]
+verify_jwt = false
