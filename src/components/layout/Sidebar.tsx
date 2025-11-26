@@ -21,24 +21,18 @@ export function AppSidebar() {
 
   const mainItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+    { title: "Accounts", url: "/accounts", icon: UserCircle },
     { title: "Posts", url: "/posts", icon: FileText },
     { title: "Stories", url: "/stories", icon: Image },
-    { title: "Accounts", url: "/accounts", icon: UserCircle },
   ];
 
-  const adminItems = isAdmin
-    ? [{ title: "Users", url: "/admin/users", icon: Users }]
-    : [];
+  const adminItems = isAdmin ? [{ title: "Users", url: "/admin/users", icon: Users }] : [];
 
   return (
     <Sidebar className={collapsed ? "w-14" : "w-64"} collapsible="icon">
       <SidebarContent>
         <div className="flex flex-col h-full">
-          <div className="p-4">
-            {!collapsed && (
-              <h1 className="text-xl font-bold text-primary">Admin Panel</h1>
-            )}
-          </div>
+          <div className="p-4">{!collapsed && <h1 className="text-xl font-bold text-primary">Admin Panel</h1>}</div>
 
           <SidebarGroup>
             <SidebarGroupLabel>Main</SidebarGroupLabel>
@@ -88,11 +82,7 @@ export function AppSidebar() {
           )}
 
           <div className="mt-auto p-4">
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={signOut}
-            >
+            <Button variant="ghost" className="w-full justify-start" onClick={signOut}>
               <LogOut className="h-4 w-4" />
               {!collapsed && <span className="ml-2">Sign Out</span>}
             </Button>
