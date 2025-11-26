@@ -271,18 +271,15 @@ export default function Accounts() {
                                 </div>
                               )}
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <AccountIcon className={`h-4 w-4 ${account.platformColor} flex-shrink-0`} />
-                                  <Badge 
-                                    variant="secondary" 
-                                    className="text-xs"
-                                  >
-                                    {account.accountType === 'personal' ? 'Personal' : 'Company'}
-                                  </Badge>
-                                </div>
-                                <h3 className="font-semibold text-sm truncate">
+                                <h3 className="font-semibold text-sm truncate mb-1">
                                   {account.accountName}
                                 </h3>
+                                <Badge 
+                                  variant="secondary" 
+                                  className="text-xs"
+                                >
+                                  {account.accountType === 'personal' ? 'Personal' : 'Company'}
+                                </Badge>
                               </div>
                             </div>
                           </div>
