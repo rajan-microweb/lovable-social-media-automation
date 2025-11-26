@@ -88,12 +88,12 @@ export default function Accounts() {
             // Add personal account if exists
             if (credentials.personal_info) {
               accounts.push({
-                id: `${platformName}-personal-${credentials.personal_info.sub}`,
+                id: `${platformName}-personal-${credentials.personal_info.linkedin_id}`,
                 platform: config.name,
-                accountId: credentials.personal_info.sub,
+                accountId: credentials.personal_info.linkedin_id,
                 accountName: credentials.personal_info.name || "LinkedIn User",
                 accountType: "personal",
-                avatarUrl: credentials.personal_info.picture || null,
+                avatarUrl: credentials.personal_info.avatar_url || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
               });
@@ -103,12 +103,12 @@ export default function Accounts() {
             if (credentials.company_info && Array.isArray(credentials.company_info)) {
               credentials.company_info.forEach((company: any) => {
                 accounts.push({
-                  id: `${platformName}-company-${company.id}`,
+                  id: `${platformName}-company-${company.company_id}`,
                   platform: config.name,
-                  accountId: company.id,
-                  accountName: company.localizedName || company.name || "Company",
+                  accountId: company.company_id,
+                  accountName: company.company_name || "Company",
                   accountType: "company",
-                  avatarUrl: company.logoUrl || null,
+                  avatarUrl: company.company_logo || null,
                   platformIcon: config.icon,
                   platformColor: config.color,
                 });
