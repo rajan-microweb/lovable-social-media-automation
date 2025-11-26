@@ -55,9 +55,7 @@ export default function Posts() {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.functions.invoke('delete-post', {
-      body: { post_id: id, user_id: user!.id }
-    });
+    const { error } = await supabase.from("posts").delete().eq("id", id);
 
     if (error) {
       toast.error("Failed to delete post");
