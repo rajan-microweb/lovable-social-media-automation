@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Linkedin } from "lucide-react";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -561,7 +561,12 @@ export default function EditPost() {
                             onCheckedChange={() => handleLinkedinAccountTypeChange(account.id)}
                           />
                           <label htmlFor={`li-${account.id}`} className="text-sm cursor-pointer flex items-center gap-2">
-                            <img src={account.avatar} alt={account.name} className="w-6 h-6 rounded-full" />
+                            <Avatar className="w-6 h-6">
+                              <AvatarImage src={account.avatar || undefined} alt={account.name} />
+                              <AvatarFallback className="bg-[#0077B5]">
+                                <Linkedin className="w-3 h-3 text-white" />
+                              </AvatarFallback>
+                            </Avatar>
                             <span>{account.name} ({account.type === 'personal' ? 'Personal' : 'Company'})</span>
                           </label>
                         </div>
