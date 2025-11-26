@@ -223,9 +223,9 @@ export default function EditStory() {
 
       storySchema.parse(storyData);
 
-      const { error } = await supabase
-        .from("stories")
-        .update({
+      const { error } = await supabase.functions.invoke('update-story', {
+        body: {
+          story_id: id!,
           type_of_story: storyData.type_of_story,
           platforms: storyData.platforms,
           text: storyData.text ?? null,
@@ -233,9 +233,8 @@ export default function EditStory() {
           video: storyData.video || null,
           scheduled_at: storyData.scheduled_at ?? null,
           status: storyData.status,
-        })
-        .eq("id", id)
-        .eq("user_id", user!.id);
+        }
+      });
 
       if (error) throw error;
 
