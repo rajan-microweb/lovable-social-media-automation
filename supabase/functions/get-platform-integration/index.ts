@@ -16,7 +16,28 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { platform_name, user_id } = await req.json();
+    let platform_name: string | null = null;
+    let user_id: string | null = null;
+
+    // Try to get parameters from URL query string first
+    const url = new URL(req.url);
+    platform_name = url.searchParams.get('platform_name');
+    user_id = url.searchParams.get('user_id');
+
+    // If not in query params, try to parse JSON body (for POST requests)
+    if (!platform_name && !user_id && req.method === 'POST') {
+      try {
+        const body = await req.text();
+        if (body && body.trim()) {
+          const json = JSON.parse(body);
+          platform_name = json.platform_name || null;
+          user_id = json.user_id || null;
+        }
+      } catch (parseError) {
+        console.warn('Could not parse request body as JSON:', parseError);
+        // Continue with empty params - will return all active integrations
+      }
+    }
 
     console.info('Fetching platform integrations:', { platform_name, user_id });
 
