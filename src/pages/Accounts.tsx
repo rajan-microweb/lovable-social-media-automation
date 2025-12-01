@@ -113,11 +113,11 @@ export default function Accounts() {
       icon: Linkedin,
       color: "text-[#0A66C2]",
     },
-    facebook: {
-      name: "Facebook",
-      icon: Facebook,
-      color: "text-[#1877F2]",
-    },
+    // facebook: {
+    //   name: "Facebook",
+    //   icon: Facebook,
+    //   color: "text-[#1877F2]",
+    // },
     instagram: {
       name: "Instagram",
       icon: Instagram,
@@ -127,9 +127,7 @@ export default function Accounts() {
 
   // Get all LinkedIn IDs from connected accounts
   const getLinkedInIds = (accounts: ConnectedAccount[]): string[] => {
-    return accounts
-      .filter((acc) => acc.platform === "LinkedIn")
-      .map((acc) => acc.accountId);
+    return accounts.filter((acc) => acc.platform === "LinkedIn").map((acc) => acc.accountId);
   };
 
   // Fetch login activity
@@ -265,9 +263,7 @@ export default function Accounts() {
         setConnectedAccounts(accounts);
 
         // Fetch login activity after getting connected accounts
-        const linkedInIds = accounts
-          .filter((acc) => acc.platform === "LinkedIn")
-          .map((acc) => acc.accountId);
+        const linkedInIds = accounts.filter((acc) => acc.platform === "LinkedIn").map((acc) => acc.accountId);
         await fetchLoginActivity(linkedInIds);
       }
       setLoading(false);
@@ -319,12 +315,13 @@ export default function Accounts() {
           console.log("Facebook login successful, exchanging token...");
 
           // Handle async operations inside the sync callback
-          supabase.functions.invoke("facebook-auth", {
-            body: {
-              short_lived_token: shortLivedToken,
-              user_id: user.id,
-            },
-          })
+          supabase.functions
+            .invoke("facebook-auth", {
+              body: {
+                short_lived_token: shortLivedToken,
+                user_id: user.id,
+              },
+            })
             .then((result) => {
               if (result.error) {
                 console.error("Facebook auth error:", result.error);
@@ -350,7 +347,7 @@ export default function Accounts() {
       {
         scope: "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts",
         return_scopes: true,
-      }
+      },
     );
   }, [user?.id, fbSdkLoaded]);
 
@@ -481,7 +478,8 @@ export default function Accounts() {
                             <div>
                               <p className="font-medium">{session.maskedEmail}</p>
                               <p className="text-sm text-muted-foreground">
-                                Connected on {new Date(session.connectedAt).toLocaleDateString("en-US", {
+                                Connected on{" "}
+                                {new Date(session.connectedAt).toLocaleDateString("en-US", {
                                   year: "numeric",
                                   month: "short",
                                   day: "numeric",
@@ -617,17 +615,26 @@ export default function Accounts() {
         })}
 
         {/* Disconnect Confirmation Dialog */}
-        <AlertDialog open={disconnectDialog.open} onOpenChange={(open) => setDisconnectDialog({ open, platformName: open ? disconnectDialog.platformName : null })}>
+        <AlertDialog
+          open={disconnectDialog.open}
+          onOpenChange={(open) =>
+            setDisconnectDialog({ open, platformName: open ? disconnectDialog.platformName : null })
+          }
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Disconnect {disconnectDialog.platformName}?</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to disconnect your {disconnectDialog.platformName} account? This will remove all connected accounts for this platform.
+                Are you sure you want to disconnect your {disconnectDialog.platformName} account? This will remove all
+                connected accounts for this platform.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDisconnect} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogAction
+                onClick={handleDisconnect}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
                 Disconnect
               </AlertDialogAction>
             </AlertDialogFooter>
