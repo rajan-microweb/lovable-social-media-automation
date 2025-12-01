@@ -13,19 +13,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Facebook, Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Loader2 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { Facebook, Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor } from "lucide-react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-// Declare global FB SDK type
-declare global {
-  interface Window {
-    FB: any;
-    fbAsyncInit: () => void;
-  }
-}
 
 interface ConnectedAccount {
   id: string;
@@ -63,49 +55,10 @@ export default function Accounts() {
   const [loginActivity, setLoginActivity] = useState<LoginActivitySession[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [revokingSession, setRevokingSession] = useState<string | null>(null);
-  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
-  const [fbSdkLoaded, setFbSdkLoaded] = useState(false);
   const [disconnectDialog, setDisconnectDialog] = useState<{ open: boolean; platformName: string | null }>({
     open: false,
     platformName: null,
   });
-
-  // Initialize Facebook SDK
-  useEffect(() => {
-    // Check if FB SDK is already loaded
-    if (window.FB) {
-      setFbSdkLoaded(true);
-      return;
-    }
-
-    // Load Facebook SDK
-    window.fbAsyncInit = function () {
-      window.FB.init({
-        appId: "680667824734498", // Your Facebook App ID
-        cookie: true,
-        xfbml: true,
-        version: "v24.0",
-      });
-      setFbSdkLoaded(true);
-      console.log("Facebook SDK initialized");
-    };
-
-    // Load the SDK script
-    const script = document.createElement("script");
-    script.id = "facebook-jssdk";
-    script.src = "https://connect.facebook.net/en_US/sdk.js";
-    script.async = true;
-    script.defer = true;
-    document.body.appendChild(script);
-
-    return () => {
-      // Cleanup if needed
-      const existingScript = document.getElementById("facebook-jssdk");
-      if (existingScript) {
-        existingScript.remove();
-      }
-    };
-  }, []);
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -294,81 +247,27 @@ export default function Accounts() {
     };
   }, []);
 
-  // Handle Facebook Login
-  const handleFacebookConnect = useCallback(() => {
-    if (!user?.id) {
-      toast.error("Please log in to connect your account");
-      return;
-    }
-
-    if (!fbSdkLoaded || !window.FB) {
-      toast.error("Facebook SDK not loaded. Please try again.");
-      return;
-    }
-
-    setConnectingPlatform("Facebook");
-
-    window.FB.login(
-      (response: any) => {
-        if (response.authResponse) {
-          const shortLivedToken = response.authResponse.accessToken;
-          console.log("Facebook login successful, exchanging token...");
-
-          // Handle async operations inside the sync callback
-          supabase.functions
-            .invoke("facebook-auth", {
-              body: {
-                short_lived_token: shortLivedToken,
-                user_id: user.id,
-              },
-            })
-            .then((result) => {
-              if (result.error) {
-                console.error("Facebook auth error:", result.error);
-                toast.error("Failed to connect Facebook account");
-              } else {
-                console.log("Facebook account connected:", result.data);
-                toast.success(`Facebook connected! ${result.data?.data?.pages_count || 0} page(s) found.`);
-              }
-            })
-            .catch((error) => {
-              console.error("Error calling facebook-auth:", error);
-              toast.error("Failed to connect Facebook account");
-            })
-            .finally(() => {
-              setConnectingPlatform(null);
-            });
-        } else {
-          console.log("Facebook login cancelled or failed");
-          toast.error("Facebook login was cancelled");
-          setConnectingPlatform(null);
-        }
-      },
-      {
-        scope: "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts",
-        return_scopes: true,
-      },
-    );
-  }, [user?.id, fbSdkLoaded]);
-
   const handleConnect = (platform: string) => {
     if (!user?.id) {
       toast.error("Please log in to connect your account");
       return;
     }
 
+    const width = 600;
+    const height = 700;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+
     if (platform === "LinkedIn") {
       const oauthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&state=${user.id}&scope=openid%20profile%20email%20w_member_social%20w_organization_social%20rw_organization_admin%20r_organization_social`;
-
-      const width = 600;
-      const height = 700;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
 
       window.open(oauthUrl, "LinkedIn OAuth", `width=${width},height=${height},left=${left},top=${top}`);
       toast.success("Opening LinkedIn authentication...");
     } else if (platform === "Facebook") {
-      handleFacebookConnect();
+      const oauthUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=700910119362432&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/facebook-callback&scope=pages_manage_posts,pages_read_engagement,pages_show_list&response_type=code&state=${user.id}`;
+
+      window.open(oauthUrl, "Facebook OAuth", `width=${width},height=${height},left=${left},top=${top}`);
+      toast.success("Opening Facebook authentication...");
     } else {
       toast.success(`Connecting to ${platform}...`);
     }
@@ -546,18 +445,8 @@ export default function Accounts() {
                   <Button
                     variant={platformAccounts.length > 0 ? "outline" : "default"}
                     onClick={() => handleConnect(platformName)}
-                    disabled={connectingPlatform === platformName}
                   >
-                    {connectingPlatform === platformName ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Connecting...
-                      </>
-                    ) : platformAccounts.length > 0 ? (
-                      "+ Add Account"
-                    ) : (
-                      "Connect"
-                    )}
+                    {platformAccounts.length > 0 ? "+ Add Account" : "Connect"}
                   </Button>
                 </div>
               </div>
