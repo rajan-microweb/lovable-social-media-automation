@@ -26,3 +26,12 @@ verify_jwt = false
 
 [functions.delete-story]
 verify_jwt = false
+
+[functions.get-login-activity]
+verify_jwt = false
+
+[functions.revoke-other-session]
+verify_jwt = false
+
+[functions.facebook-auth]
+verify_jwt = false
