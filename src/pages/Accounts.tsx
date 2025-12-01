@@ -118,11 +118,11 @@ export default function Accounts() {
     //   icon: Facebook,
     //   color: "text-[#1877F2]",
     // },
-    instagram: {
-      name: "Instagram",
-      icon: Instagram,
-      color: "text-[#E4405F]",
-    },
+    // instagram: {
+    //   name: "Instagram",
+    //   icon: Instagram,
+    //   color: "text-[#E4405F]",
+    // },
   };
 
   // Get all LinkedIn IDs from connected accounts
