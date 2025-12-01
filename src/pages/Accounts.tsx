@@ -113,11 +113,11 @@ export default function Accounts() {
       icon: Linkedin,
       color: "text-[#0A66C2]",
     },
-    // facebook: {
-    //   name: "Facebook",
-    //   icon: Facebook,
-    //   color: "text-[#1877F2]",
-    // },
+    facebook: {
+      name: "Facebook",
+      icon: Facebook,
+      color: "text-[#1877F2]",
+    },
     // instagram: {
     //   name: "Instagram",
     //   icon: Instagram,
