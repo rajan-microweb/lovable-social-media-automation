@@ -313,35 +313,39 @@ export default function Accounts() {
     setConnectingPlatform("Facebook");
 
     window.FB.login(
-      async (response: any) => {
+      (response: any) => {
         if (response.authResponse) {
           const shortLivedToken = response.authResponse.accessToken;
           console.log("Facebook login successful, exchanging token...");
 
-          try {
-            const result = await supabase.functions.invoke("facebook-auth", {
-              body: {
-                short_lived_token: shortLivedToken,
-                user_id: user.id,
-              },
-            });
-
-            if (result.error) {
-              console.error("Facebook auth error:", result.error);
+          // Handle async operations inside the sync callback
+          supabase.functions.invoke("facebook-auth", {
+            body: {
+              short_lived_token: shortLivedToken,
+              user_id: user.id,
+            },
+          })
+            .then((result) => {
+              if (result.error) {
+                console.error("Facebook auth error:", result.error);
+                toast.error("Failed to connect Facebook account");
+              } else {
+                console.log("Facebook account connected:", result.data);
+                toast.success(`Facebook connected! ${result.data?.data?.pages_count || 0} page(s) found.`);
+              }
+            })
+            .catch((error) => {
+              console.error("Error calling facebook-auth:", error);
               toast.error("Failed to connect Facebook account");
-            } else {
-              console.log("Facebook account connected:", result.data);
-              toast.success(`Facebook connected! ${result.data?.data?.pages_count || 0} page(s) found.`);
-            }
-          } catch (error) {
-            console.error("Error calling facebook-auth:", error);
-            toast.error("Failed to connect Facebook account");
-          }
+            })
+            .finally(() => {
+              setConnectingPlatform(null);
+            });
         } else {
           console.log("Facebook login cancelled or failed");
           toast.error("Facebook login was cancelled");
+          setConnectingPlatform(null);
         }
-        setConnectingPlatform(null);
       },
       {
         scope: "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts",
