@@ -98,6 +98,13 @@ All colors MUST be HSL.
     --chart-4: 47 96% 53%;
     --chart-5: 0 84% 60%;
   }
+
+  :root {
+    --calendar-post: 217 91% 60%;
+    --calendar-post-bg: 217 91% 60%;
+    --calendar-story: 280 87% 65%;
+    --calendar-story-bg: 280 87% 65%;
+  }
 }
 
 @layer base {
