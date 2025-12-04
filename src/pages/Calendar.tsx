@@ -14,16 +14,11 @@ import {
   isSameMonth,
   isSameDay,
   parseISO,
-  startOfDay,
-  endOfDay,
-  isWithinInterval,
   getHours,
-  getMinutes,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, FileText, Image } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Image, Calendar as CalendarIcon, Sparkles } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -64,7 +59,6 @@ export default function Calendar() {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      // Fetch scheduled posts
       const { data: posts, error: postsError } = await supabase
         .from("posts")
         .select("id, title, scheduled_at, status, platforms, type_of_post")
@@ -73,7 +67,6 @@ export default function Calendar() {
 
       if (postsError) throw postsError;
 
-      // Fetch scheduled stories
       const { data: stories, error: storiesError } = await supabase
         .from("stories")
         .select("id, title, scheduled_at, status, platforms, type_of_story")
@@ -156,40 +149,49 @@ export default function Calendar() {
               handleEventClick(event);
             }}
             className={`
-              cursor-pointer rounded px-1.5 py-0.5 text-xs truncate mb-0.5
-              transition-all hover:opacity-80
+              group cursor-pointer rounded-md px-2 py-1 text-xs mb-1
+              transition-all duration-300 ease-out
+              hover:scale-[1.02] hover:shadow-lg
+              animate-fade-in
               ${isPost 
-                ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border-l-2 border-blue-500" 
-                : "bg-purple-500/20 text-purple-600 dark:text-purple-400 border-l-2 border-purple-500"
+                ? "bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-600 dark:text-blue-400 border-l-3 border-blue-500 hover:from-blue-500/30 hover:to-cyan-500/30" 
+                : "bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-600 dark:text-purple-400 border-l-3 border-purple-500 hover:from-purple-500/30 hover:to-pink-500/30"
               }
             `}
           >
             {compact ? (
               <span className="flex items-center gap-1">
-                {isPost ? <FileText className="h-3 w-3" /> : <Image className="h-3 w-3" />}
+                {isPost ? <FileText className="h-3 w-3 animate-pulse" /> : <Image className="h-3 w-3 animate-pulse" />}
               </span>
             ) : (
-              <span className="flex items-center gap-1">
-                <span className="font-medium">{time}</span>
-                <span className="truncate">{event.title}</span>
+              <span className="flex items-center gap-1.5">
+                {isPost ? <FileText className="h-3 w-3 flex-shrink-0" /> : <Image className="h-3 w-3 flex-shrink-0" />}
+                <span className="font-semibold">{time}</span>
+                <span className="truncate opacity-80">{event.title}</span>
               </span>
             )}
           </div>
         </TooltipTrigger>
-        <TooltipContent side="right" className="max-w-xs">
-          <div className="space-y-1">
-            <p className="font-semibold">{event.title}</p>
+        <TooltipContent side="right" className="max-w-xs bg-card/95 backdrop-blur-sm border-border/50 shadow-xl animate-scale-in">
+          <div className="space-y-2 p-1">
+            <p className="font-bold text-foreground">{event.title}</p>
             <p className="text-xs text-muted-foreground">
               {format(parseISO(event.scheduled_at), "PPp")}
             </p>
             <div className="flex items-center gap-2">
-              <Badge variant={event.type === "post" ? "default" : "secondary"}>
+              <Badge 
+                variant={event.type === "post" ? "default" : "secondary"}
+                className={event.type === "post" 
+                  ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white" 
+                  : "bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                }
+              >
                 {event.type === "post" ? "Post" : "Story"}
               </Badge>
-              <Badge variant="outline">{event.status}</Badge>
+              <Badge variant="outline" className="capitalize">{event.status}</Badge>
             </div>
             {event.platforms && event.platforms.length > 0 && (
-              <p className="text-xs">Platforms: {event.platforms.join(", ")}</p>
+              <p className="text-xs text-muted-foreground">Platforms: {event.platforms.join(", ")}</p>
             )}
           </div>
         </TooltipContent>
@@ -208,7 +210,6 @@ export default function Calendar() {
     let days = [];
     let day = startDate;
 
-    // Header row with day names
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
     while (day <= endDate) {
@@ -222,22 +223,34 @@ export default function Calendar() {
           <div
             key={day.toString()}
             className={`
-              min-h-[100px] p-1 border border-border/50
-              ${!isCurrentMonth ? "bg-muted/30" : "bg-card"}
-              ${isToday ? "ring-2 ring-primary ring-inset" : ""}
+              min-h-[120px] p-2 border-r border-b border-border/30
+              transition-all duration-300 ease-out
+              hover:bg-accent/5
+              ${!isCurrentMonth ? "bg-muted/20" : "bg-card/50"}
+              ${isToday ? "bg-primary/5 ring-2 ring-primary/30 ring-inset" : ""}
+              animate-fade-in
             `}
+            style={{ animationDelay: `${i * 20}ms` }}
           >
             <div className={`
-              text-sm font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full
-              ${isToday ? "bg-primary text-primary-foreground" : ""}
-              ${!isCurrentMonth ? "text-muted-foreground" : ""}
+              text-sm font-medium mb-2 w-7 h-7 flex items-center justify-center rounded-full
+              transition-all duration-300
+              ${isToday 
+                ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30 scale-110" 
+                : "hover:bg-accent/20"
+              }
+              ${!isCurrentMonth ? "text-muted-foreground/50" : "text-foreground"}
             `}>
               {format(currentDay, "d")}
             </div>
-            <div className="space-y-0.5 overflow-hidden max-h-[70px]">
-              {dayEvents.slice(0, 3).map((event) => renderEventChip(event))}
+            <div className="space-y-1 overflow-hidden max-h-[80px]">
+              {dayEvents.slice(0, 3).map((event, idx) => (
+                <div key={event.id} style={{ animationDelay: `${idx * 50}ms` }}>
+                  {renderEventChip(event)}
+                </div>
+              ))}
               {dayEvents.length > 3 && (
-                <div className="text-xs text-muted-foreground px-1">
+                <div className="text-xs text-muted-foreground px-2 py-0.5 bg-muted/50 rounded-md inline-block animate-fade-in">
                   +{dayEvents.length - 3} more
                 </div>
               )}
@@ -255,10 +268,14 @@ export default function Calendar() {
     }
 
     return (
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="grid grid-cols-7 bg-muted">
-          {dayNames.map((name) => (
-            <div key={name} className="p-2 text-center text-sm font-medium text-muted-foreground">
+      <div className="rounded-xl border border-border/50 overflow-hidden shadow-xl bg-gradient-to-br from-card to-card/80 backdrop-blur-sm">
+        <div className="grid grid-cols-7 bg-gradient-to-r from-muted/80 to-muted/60 backdrop-blur-sm">
+          {dayNames.map((name, idx) => (
+            <div 
+              key={name} 
+              className="p-3 text-center text-sm font-semibold text-muted-foreground border-r border-border/30 last:border-r-0 animate-fade-in"
+              style={{ animationDelay: `${idx * 30}ms` }}
+            >
               {name}
             </div>
           ))}
@@ -279,22 +296,28 @@ export default function Calendar() {
     }
 
     return (
-      <div className="rounded-lg border border-border overflow-hidden">
+      <div className="rounded-xl border border-border/50 overflow-hidden shadow-xl bg-gradient-to-br from-card to-card/80">
         {/* Header */}
-        <div className="grid grid-cols-[60px_repeat(7,1fr)] bg-muted">
-          <div className="p-2 border-r border-border" />
-          {days.map((day) => (
+        <div className="grid grid-cols-[70px_repeat(7,1fr)] bg-gradient-to-r from-muted/80 to-muted/60 backdrop-blur-sm">
+          <div className="p-3 border-r border-border/30" />
+          {days.map((day, idx) => (
             <div
               key={day.toString()}
               className={`
-                p-2 text-center border-r border-border last:border-r-0
+                p-3 text-center border-r border-border/30 last:border-r-0
+                transition-all duration-300 animate-fade-in
                 ${isSameDay(day, new Date()) ? "bg-primary/10" : ""}
               `}
+              style={{ animationDelay: `${idx * 40}ms` }}
             >
-              <div className="text-xs text-muted-foreground">{format(day, "EEE")}</div>
+              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{format(day, "EEE")}</div>
               <div className={`
-                text-lg font-semibold w-8 h-8 mx-auto flex items-center justify-center rounded-full
-                ${isSameDay(day, new Date()) ? "bg-primary text-primary-foreground" : ""}
+                text-xl font-bold w-10 h-10 mx-auto flex items-center justify-center rounded-full mt-1
+                transition-all duration-300
+                ${isSameDay(day, new Date()) 
+                  ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30" 
+                  : "hover:bg-accent/20"
+                }
               `}>
                 {format(day, "d")}
               </div>
@@ -302,10 +325,10 @@ export default function Calendar() {
           ))}
         </div>
         {/* Time grid */}
-        <div className="max-h-[600px] overflow-y-auto">
+        <div className="max-h-[600px] overflow-y-auto scrollbar-thin">
           {hours.map((hour) => (
-            <div key={hour} className="grid grid-cols-[60px_repeat(7,1fr)] border-t border-border">
-              <div className="p-1 text-xs text-muted-foreground text-right pr-2 border-r border-border">
+            <div key={hour} className="grid grid-cols-[70px_repeat(7,1fr)] border-t border-border/20 hover:bg-accent/5 transition-colors duration-200">
+              <div className="p-2 text-xs text-muted-foreground text-right pr-3 border-r border-border/30 font-medium">
                 {format(new Date().setHours(hour, 0), "HH:mm")}
               </div>
               {days.map((day) => {
@@ -316,7 +339,7 @@ export default function Calendar() {
                 return (
                   <div
                     key={day.toString() + hour}
-                    className="min-h-[50px] p-0.5 border-r border-border last:border-r-0 relative"
+                    className="min-h-[60px] p-1 border-r border-border/20 last:border-r-0 relative hover:bg-accent/5 transition-colors duration-200"
                   >
                     {dayEvents.map((event) => renderEventChip(event))}
                   </div>
@@ -335,56 +358,83 @@ export default function Calendar() {
     const dayEvents = getEventsForDay(currentDate);
 
     return (
-      <div className="rounded-lg border border-border overflow-hidden">
+      <div className="rounded-xl border border-border/50 overflow-hidden shadow-xl bg-gradient-to-br from-card to-card/80">
         {/* Header */}
-        <div className="p-4 bg-muted text-center">
-          <div className="text-sm text-muted-foreground">{format(currentDate, "EEEE")}</div>
+        <div className="p-6 bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 text-center backdrop-blur-sm animate-fade-in">
+          <div className="text-sm text-muted-foreground font-medium uppercase tracking-widest">{format(currentDate, "EEEE")}</div>
           <div className={`
-            text-3xl font-bold w-12 h-12 mx-auto flex items-center justify-center rounded-full
-            ${isSameDay(currentDate, new Date()) ? "bg-primary text-primary-foreground" : ""}
+            text-4xl font-bold w-16 h-16 mx-auto flex items-center justify-center rounded-full mt-2
+            transition-all duration-500 animate-scale-in
+            ${isSameDay(currentDate, new Date()) 
+              ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-xl shadow-primary/40" 
+              : "bg-muted/50 text-foreground"
+            }
           `}>
             {format(currentDate, "d")}
           </div>
-          <div className="text-sm text-muted-foreground mt-1">{format(currentDate, "MMMM yyyy")}</div>
+          <div className="text-sm text-muted-foreground mt-2 font-medium">{format(currentDate, "MMMM yyyy")}</div>
         </div>
         {/* Time grid */}
-        <div className="max-h-[600px] overflow-y-auto">
-          {hours.map((hour) => {
+        <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
+          {hours.map((hour, idx) => {
             const hourEvents = dayEvents.filter((e) => {
               const eventHour = getHours(parseISO(e.scheduled_at));
               return eventHour === hour;
             });
             return (
-              <div key={hour} className="grid grid-cols-[80px_1fr] border-t border-border">
-                <div className="p-2 text-sm text-muted-foreground text-right pr-3 border-r border-border">
+              <div 
+                key={hour} 
+                className="grid grid-cols-[100px_1fr] border-t border-border/20 hover:bg-accent/5 transition-colors duration-200 animate-fade-in"
+                style={{ animationDelay: `${idx * 15}ms` }}
+              >
+                <div className="p-3 text-sm text-muted-foreground text-right pr-4 border-r border-border/30 font-medium">
                   {format(new Date().setHours(hour, 0), "HH:mm")}
                 </div>
-                <div className="min-h-[60px] p-1">
-                  {hourEvents.map((event) => (
+                <div className="min-h-[70px] p-2">
+                  {hourEvents.map((event, eventIdx) => (
                     <div
                       key={event.id}
                       onClick={() => handleEventClick(event)}
                       className={`
-                        cursor-pointer rounded-lg p-2 mb-1 transition-all hover:opacity-80
+                        cursor-pointer rounded-xl p-3 mb-2 
+                        transition-all duration-300 ease-out
+                        hover:scale-[1.01] hover:shadow-xl
+                        animate-fade-in
                         ${event.type === "post" 
-                          ? "bg-blue-500/20 border-l-4 border-blue-500" 
-                          : "bg-purple-500/20 border-l-4 border-purple-500"
+                          ? "bg-gradient-to-r from-blue-500/15 to-cyan-500/15 border-l-4 border-blue-500 hover:from-blue-500/25 hover:to-cyan-500/25" 
+                          : "bg-gradient-to-r from-purple-500/15 to-pink-500/15 border-l-4 border-purple-500 hover:from-purple-500/25 hover:to-pink-500/25"
                         }
                       `}
+                      style={{ animationDelay: `${eventIdx * 50}ms` }}
                     >
-                      <div className="flex items-center gap-2">
-                        {event.type === "post" ? (
-                          <FileText className="h-4 w-4 text-blue-500" />
-                        ) : (
-                          <Image className="h-4 w-4 text-purple-500" />
-                        )}
-                        <span className="font-medium">{event.title}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {format(parseISO(event.scheduled_at), "HH:mm")} • {event.status}
-                        {event.platforms && event.platforms.length > 0 && (
-                          <span> • {event.platforms.join(", ")}</span>
-                        )}
+                      <div className="flex items-center gap-3">
+                        <div className={`
+                          p-2 rounded-lg
+                          ${event.type === "post" 
+                            ? "bg-gradient-to-br from-blue-500 to-cyan-500" 
+                            : "bg-gradient-to-br from-purple-500 to-pink-500"
+                          }
+                        `}>
+                          {event.type === "post" ? (
+                            <FileText className="h-4 w-4 text-white" />
+                          ) : (
+                            <Image className="h-4 w-4 text-white" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-semibold text-foreground block truncate">{event.title}</span>
+                          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                            <span>{format(parseISO(event.scheduled_at), "HH:mm")}</span>
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground/50" />
+                            <span className="capitalize">{event.status}</span>
+                            {event.platforms && event.platforms.length > 0 && (
+                              <>
+                                <span className="w-1 h-1 rounded-full bg-muted-foreground/50" />
+                                <span>{event.platforms.join(", ")}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -409,19 +459,33 @@ export default function Calendar() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-4">
+      <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h1 className="text-2xl font-bold">Calendar</h1>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex rounded-lg border border-border overflow-hidden">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/25">
+              <CalendarIcon className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Calendar</h1>
+              <p className="text-sm text-muted-foreground">Schedule and manage your content</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex rounded-xl border border-border/50 overflow-hidden bg-muted/30 backdrop-blur-sm p-1 shadow-inner">
               {(["month", "week", "day"] as ViewType[]).map((v) => (
                 <Button
                   key={v}
                   variant={view === v ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setView(v)}
-                  className="rounded-none capitalize"
+                  className={`
+                    rounded-lg capitalize font-medium transition-all duration-300
+                    ${view === v 
+                      ? "bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-md" 
+                      : "hover:bg-accent/20"
+                    }
+                  `}
                 >
                   {v}
                 </Button>
@@ -431,36 +495,56 @@ export default function Calendar() {
         </div>
 
         {/* Navigation */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between bg-gradient-to-r from-muted/50 via-transparent to-muted/50 rounded-xl p-4 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={navigatePrev}>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={navigatePrev}
+              className="rounded-xl hover:bg-accent/20 hover:scale-105 transition-all duration-300 border-border/50"
+            >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" onClick={navigateNext}>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={navigateNext}
+              className="rounded-xl hover:bg-accent/20 hover:scale-105 transition-all duration-300 border-border/50"
+            >
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={goToToday}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={goToToday}
+              className="rounded-xl hover:bg-accent/20 hover:scale-105 transition-all duration-300 border-border/50 font-medium"
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
               Today
             </Button>
           </div>
-          <h2 className="text-xl font-semibold">{getHeaderTitle()}</h2>
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded bg-blue-500" />
-              <span>Posts</span>
+          <h2 className="text-xl font-bold text-foreground animate-fade-in">{getHeaderTitle()}</h2>
+          <div className="flex items-center gap-5 text-sm">
+            <div className="flex items-center gap-2 animate-fade-in">
+              <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 shadow-sm shadow-blue-500/50" />
+              <span className="font-medium text-muted-foreground">Posts</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded bg-purple-500" />
-              <span>Stories</span>
+            <div className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: '50ms' }}>
+              <div className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 shadow-sm shadow-purple-500/50" />
+              <span className="font-medium text-muted-foreground">Stories</span>
             </div>
           </div>
         </div>
 
         {/* Calendar */}
-        <Card className="p-4">
+        <div className="animate-fade-in" style={{ animationDelay: '100ms' }}>
           {loading ? (
-            <div className="flex items-center justify-center h-[500px]">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            <div className="flex flex-col items-center justify-center h-[500px] rounded-xl border border-border/50 bg-gradient-to-br from-card to-card/80">
+              <div className="relative">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/30 border-t-primary" />
+                <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-primary" />
+              </div>
+              <p className="text-muted-foreground mt-4 animate-pulse">Loading your schedule...</p>
             </div>
           ) : (
             <>
@@ -469,7 +553,7 @@ export default function Calendar() {
               {view === "day" && renderDayView()}
             </>
           )}
-        </Card>
+        </div>
       </div>
     </DashboardLayout>
   );
