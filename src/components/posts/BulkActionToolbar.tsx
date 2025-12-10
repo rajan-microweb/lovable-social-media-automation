@@ -25,7 +25,8 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Trash2, Clock, X, CheckSquare } from "lucide-react";
 import { useState } from "react";
-import { format } from "date-fns";
+import { format, setHours, setMinutes } from "date-fns";
+import { Input } from "@/components/ui/input";
 
 interface BulkActionToolbarProps {
   selectedCount: number;
@@ -49,13 +50,17 @@ export function BulkActionToolbar({
   isLoading = false,
 }: BulkActionToolbarProps) {
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>();
+  const [scheduleTime, setScheduleTime] = useState("12:00");
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const handleScheduleConfirm = () => {
     if (scheduleDate) {
-      onBulkSchedule(scheduleDate);
+      const [hours, minutes] = scheduleTime.split(":").map(Number);
+      const dateWithTime = setMinutes(setHours(scheduleDate, hours), minutes);
+      onBulkSchedule(dateWithTime);
       setScheduleOpen(false);
       setScheduleDate(undefined);
+      setScheduleTime("12:00");
     }
   };
 
@@ -130,18 +135,28 @@ export function BulkActionToolbar({
             Schedule
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="w-auto p-0 pointer-events-auto" align="start">
           <div className="p-3 space-y-3">
             <Calendar
               mode="single"
               selected={scheduleDate}
               onSelect={setScheduleDate}
               disabled={(date) => date < new Date()}
+              className="pointer-events-auto"
             />
+            <div className="flex items-center gap-2 px-1">
+              <label className="text-sm text-muted-foreground">Time:</label>
+              <Input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className="w-auto"
+              />
+            </div>
             {scheduleDate && (
               <div className="flex items-center justify-between">
                 <span className="text-sm">
-                  {format(scheduleDate, "PPP")}
+                  {format(scheduleDate, "PPP")} at {scheduleTime}
                 </span>
                 <Button size="sm" onClick={handleScheduleConfirm}>
                   Confirm
