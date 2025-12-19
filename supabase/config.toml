@@ -47,3 +47,6 @@ verify_jwt = true
 
 [functions.bulk-delete-stories]
 verify_jwt = true
+
+[functions.get-all-posts]
+verify_jwt = false
