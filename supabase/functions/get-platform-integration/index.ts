@@ -1,9 +1,32 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
 };
+
+// Rate limiting
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_MAX = 100;
+const RATE_LIMIT_WINDOW_MS = 60000;
+
+function checkRateLimit(clientId: string): boolean {
+  const now = Date.now();
+  const record = rateLimitStore.get(clientId);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitStore.set(clientId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  
+  if (record.count >= RATE_LIMIT_MAX) {
+    return false;
+  }
+  
+  record.count++;
+  return true;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,61 +34,75 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // API Key authentication
+    const apiKey = req.headers.get('x-api-key');
+    const expectedApiKey = Deno.env.get('N8N_API_KEY');
+
+    if (!apiKey || apiKey !== expectedApiKey) {
+      console.error('Invalid or missing API key');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Rate limiting by client IP
+    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
+    if (!checkRateLimit(clientIp)) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-
-    // Authenticate user from JWT
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
-
-    if (authError || !user) {
-      console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const authenticatedUserId = user.id;
-    console.log('Authenticated user:', authenticatedUserId);
 
     // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get platform_name from URL query params or POST body
-    let platform_name: string | null = null;
+    // Get parameters from URL query params or POST body
     const url = new URL(req.url);
-    platform_name = url.searchParams.get('platform_name');
+    let platform_name: string | null = url.searchParams.get('platform_name');
+    let user_id: string | null = url.searchParams.get('user_id');
 
-    if (!platform_name && req.method === 'POST') {
+    if (req.method === 'POST') {
       try {
         const body = await req.text();
         if (body && body.trim()) {
           const json = JSON.parse(body);
-          platform_name = json.platform_name || null;
+          platform_name = json.platform_name || platform_name;
+          user_id = json.user_id || user_id;
         }
       } catch (parseError) {
         console.warn('Could not parse request body as JSON:', parseError);
       }
     }
 
-    console.info('Fetching platform integrations:', { platform_name, user_id: authenticatedUserId });
+    // Validate user_id is required
+    if (!user_id) {
+      return new Response(
+        JSON.stringify({ error: 'user_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Build query - ALWAYS filter by authenticated user
+    const uuidSchema = z.string().uuid();
+    const userIdResult = uuidSchema.safeParse(user_id);
+    if (!userIdResult.success) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid user_id format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.info('Fetching platform integrations:', { platform_name, user_id });
+
+    // Build query - filter by provided user_id
     let query = supabase
       .from('platform_integrations')
       .select('*')
-      .eq('user_id', authenticatedUserId)
+      .eq('user_id', user_id)
       .eq('status', 'active');
 
     if (platform_name) {
