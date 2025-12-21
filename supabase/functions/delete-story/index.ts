@@ -1,51 +1,85 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
 };
 
-serve(async (req) => {
+// Rate limiting
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_MAX = 100;
+const RATE_LIMIT_WINDOW_MS = 60000;
+
+function checkRateLimit(clientId: string): boolean {
+  const now = Date.now();
+  const record = rateLimitStore.get(clientId);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitStore.set(clientId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  
+  if (record.count >= RATE_LIMIT_MAX) {
+    return false;
+  }
+  
+  record.count++;
+  return true;
+}
+
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // API Key authentication
+    const apiKey = req.headers.get('x-api-key');
+    const expectedApiKey = Deno.env.get('N8N_API_KEY');
+
+    if (!apiKey || apiKey !== expectedApiKey) {
+      console.error('Invalid or missing API key');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Rate limiting by client IP
+    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
+    if (!checkRateLimit(clientIp)) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    // Authenticate user from JWT
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
-
-    if (authError || !user) {
-      console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const authenticatedUserId = user.id;
-    console.log('Authenticated user:', authenticatedUserId);
 
     // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { story_id } = body;
+    const { story_id, user_id } = body;
+
+    // Validate user_id is required
+    if (!user_id) {
+      return new Response(
+        JSON.stringify({ error: 'user_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const uuidSchema = z.string().uuid();
+    const userIdResult = uuidSchema.safeParse(user_id);
+    if (!userIdResult.success) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid user_id format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!story_id) {
       console.error('Missing story_id in request');
@@ -55,9 +89,9 @@ serve(async (req) => {
       );
     }
 
-    console.log('Deleting story:', story_id, 'for user:', authenticatedUserId);
+    console.log('Deleting story:', story_id, 'for user:', user_id);
 
-    // Verify ownership - ALWAYS verify against authenticated user
+    // Verify ownership - verify against provided user_id
     const { data: story, error: fetchError } = await supabase
       .from('stories')
       .select('user_id')
@@ -72,7 +106,7 @@ serve(async (req) => {
       );
     }
 
-    if (story.user_id !== authenticatedUserId) {
+    if (story.user_id !== user_id) {
       console.error('Unauthorized: User does not own this story');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
