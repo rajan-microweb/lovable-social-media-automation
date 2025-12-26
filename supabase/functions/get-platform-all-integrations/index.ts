@@ -27,4 +27,6 @@ serve(async (req) => {
   }
 
   return new Response(JSON.stringify({ data }), { status: 200 })
+}, {
+  verify_jwt: false
 })
