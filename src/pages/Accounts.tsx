@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { OpenAIConnectDialog } from "@/components/OpenAIConnectDialog";
+import { PlatformConnectDialog } from "@/components/PlatformConnectDialog";
 
 interface ConnectedAccount {
   id: string;
@@ -69,6 +70,9 @@ export default function Accounts() {
   const [openaiDialogOpen, setOpenaiDialogOpen] = useState(false);
   const [openaiConnected, setOpenaiConnected] = useState(false);
   const [openaiMaskedKey, setOpenaiMaskedKey] = useState("");
+
+  // State for generic platform connect dialog
+  const [platformDialog, setPlatformDialog] = useState<{ open: boolean; platform: string | null }>({ open: false, platform: null });
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -309,25 +313,19 @@ export default function Accounts() {
       return;
     }
 
-    // Do nothing for LinkedIn
-    if (platform === "LinkedIn") {
-      // No action on connect for LinkedIn
+    // Open the custom dialog for LinkedIn, Facebook, Instagram, Threads, Twitter
+    if (["LinkedIn", "Facebook", "Instagram", "Threads", "Twitter"].includes(platform)) {
+      setPlatformDialog({ open: true, platform });
       return;
     }
 
-    const width = 600;
-    const height = 700;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-
-    if (platform === "LinkedIn") {
-      const oauthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&state=${user.id}&scope=openid%20profile%20email%20w_member_social%20w_organization_social%20rw_organization_admin%20r_organization_social`;
-
-      window.open(oauthUrl, "LinkedIn OAuth", `width=${width},height=${height},left=${left},top=${top}`);
-      toast.success("Opening LinkedIn authentication...");
-    } else {
-      toast.success(`Connecting to ${platform}...`);
-    }
+    toast.success(`Connecting to ${platform}...`);
+  };
+  // Handle submit from PlatformConnectDialog
+  const handlePlatformDialogSubmit = (fields: Record<string, string>) => {
+    // TODO: Implement actual connect logic here (API call, etc.)
+    toast.success(`${platformDialog.platform} credentials submitted!`);
+    setPlatformDialog({ open: false, platform: null });
   };
 
   const openDisconnectDialog = (platformName: string) => {
@@ -416,6 +414,13 @@ export default function Accounts() {
 
   return (
     <DashboardLayout>
+      {/* Platform Connect Dialog for LinkedIn, Facebook, Instagram, Threads, Twitter */}
+      <PlatformConnectDialog
+        open={platformDialog.open}
+        platform={platformDialog.platform}
+        onClose={() => setPlatformDialog({ open: false, platform: null })}
+        onSubmit={handlePlatformDialogSubmit}
+      />
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
