@@ -250,22 +250,28 @@ export default function Accounts() {
         }
       });
 
-      // Add mock accounts for demo/testing
-      ["facebook", "instagram", "twitter", "youtube"].forEach((platformName) => {
-        const config = platformConfigs[platformName];
-        if (config) {
-          accounts.push({
-            id: `${platformName}-personal-demo`,
-            platform: config.name,
-            accountId: `${platformName}-demo-id`,
-            accountName: `${config.name} Demo User`,
-            accountType: "personal",
-            avatarUrl: null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-          });
-        }
-      });
+
+      // Add mock accounts for demo/testing ONLY if not all platforms are present
+      const requiredPlatforms = ["facebook", "instagram", "twitter", "youtube"];
+      const userPlatforms = accounts.map(acc => acc.platform.toLowerCase());
+      const hasAllPlatforms = requiredPlatforms.every(p => userPlatforms.includes(platformConfigs[p].name.toLowerCase()));
+      if (!hasAllPlatforms) {
+        requiredPlatforms.forEach((platformName) => {
+          const config = platformConfigs[platformName];
+          if (config && !userPlatforms.includes(config.name.toLowerCase())) {
+            accounts.push({
+              id: `${platformName}-personal-demo`,
+              platform: config.name,
+              accountId: `${platformName}-demo-id`,
+              accountName: `${config.name} Demo User`,
+              accountType: "personal",
+              avatarUrl: null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+        });
+      }
 
       setConnectedAccounts(accounts);
 
