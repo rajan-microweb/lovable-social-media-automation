@@ -250,39 +250,22 @@ export default function Accounts() {
         }
       });
 
-
-      // Add mock accounts for demo/testing ONLY if not all platforms are present (compare by platform key)
-      const requiredPlatforms = ["facebook", "instagram", "twitter", "youtube"];
-      // Build a set of platform keys from the user's connected accounts
-      const userPlatformKeys = new Set(
-        accounts.map(acc => {
-          // Find the platform key by matching config name
-          const key = Object.keys(platformConfigs).find(
-            k => platformConfigs[k].name.toLowerCase() === acc.platform.toLowerCase()
-          );
-          return key;
-        }).filter(Boolean)
-      );
-      const hasAllPlatforms = requiredPlatforms.every(p => userPlatformKeys.has(p));
-      if (!hasAllPlatforms) {
-        requiredPlatforms.forEach((platformName) => {
-          if (!userPlatformKeys.has(platformName)) {
-            const config = platformConfigs[platformName];
-            if (config) {
-              accounts.push({
-                id: `${platformName}-personal-demo`,
-                platform: config.name,
-                accountId: `${platformName}-demo-id`,
-                accountName: `${config.name} Demo User`,
-                accountType: "personal",
-                avatarUrl: null,
-                platformIcon: config.icon,
-                platformColor: config.color,
-              });
-            }
-          }
-        });
-      }
+      // Add mock accounts for demo/testing
+      ["facebook", "instagram", "twitter", "youtube"].forEach((platformName) => {
+        const config = platformConfigs[platformName];
+        if (config) {
+          accounts.push({
+            id: `${platformName}-personal-demo`,
+            platform: config.name,
+            accountId: `${platformName}-demo-id`,
+            accountName: `${config.name} Demo User`,
+            accountType: "personal",
+            avatarUrl: null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+          });
+        }
+      });
 
       setConnectedAccounts(accounts);
 
