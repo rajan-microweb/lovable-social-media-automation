@@ -197,105 +197,102 @@ export default function Accounts() {
       data.forEach((integration) => {
         const platformName = integration.platform_name.toLowerCase();
         const config = platformConfigs[platformName];
-
         if (!config) return;
 
         const credentials = integration.credentials as any;
+        if (!credentials) return;
 
-        // Handle all platforms dynamically based on their credentials structure
-        if (credentials) {
-          // Add personal account if exists
-          if (credentials.personal_info) {
-            const providerId =
-              credentials.personal_info.linkedin_id ||
-              credentials.personal_info.provider_id ||
-              credentials.personal_info.user_id ||
-              `${platformName}-personal`;
+        // --- 1. HANDLE OPENAI (Now showing as a standard card) ---
+        if (platformName === "openai") {
+          const mainOrg = credentials.organizations?.[0];
+          accounts.push({
+            id: `openai-${integration.id}`,
+            platform: config.name,
+            accountId: credentials.masked_key || "sk-...****",
+            accountName: credentials.personal_info?.name || "OpenAI API",
+            accountType: "personal",
+            avatarUrl: credentials.personal_info?.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: mainOrg?.org_title || "API Key",
+              extraInfo: mainOrg?.role ? `Role: ${mainOrg.role}` : "Active Access",
+            },
+          });
+          return; // Skip other checks for OpenAI
+        }
+
+        // --- 2. HANDLE INSTAGRAM (Specific details) ---
+        if (platformName === "instagram" && credentials.ig_username) {
+          accounts.push({
+            id: `ig-${credentials.ig_business_id}`,
+            platform: config.name,
+            accountId: credentials.ig_business_id,
+            accountName: credentials.ig_username,
+            accountType: "personal",
+            avatarUrl: credentials.ig_avatar || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: `@${credentials.ig_username}`,
+              extraInfo: `${Number(credentials.ig_followers || 0).toLocaleString()} followers`,
+            },
+          });
+        }
+
+        // --- 3. HANDLE FACEBOOK (Specific details) ---
+        if (platformName === "facebook" && credentials.page_id) {
+          accounts.push({
+            id: `fb-${credentials.page_id}`,
+            platform: config.name,
+            accountId: credentials.page_id,
+            accountName: credentials.page_name,
+            accountType: "company",
+            avatarUrl: credentials.page_info?.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: credentials.category || "Facebook Page",
+              extraInfo: "Active Connection",
+            },
+          });
+        }
+
+        // --- 4. HANDLE LINKEDIN & OTHERS (Standard Structure) ---
+        if (credentials.personal_info && platformName === "linkedin") {
+          accounts.push({
+            id: `${platformName}-personal-${credentials.personal_info.linkedin_id || credentials.personal_info.user_id}`,
+            platform: config.name,
+            accountId: credentials.personal_info.linkedin_id || credentials.personal_info.user_id,
+            accountName: credentials.personal_info.name || `${config.name} User`,
+            accountType: "personal",
+            avatarUrl: credentials.personal_info.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: credentials.personal_info.headline || "Profile",
+              extraInfo: "Personal Account",
+            },
+          });
+        }
+
+        if (Array.isArray(credentials.company_info)) {
+          credentials.company_info.forEach((company: any) => {
             accounts.push({
-              id: `${platformName}-personal-${providerId}`,
+              id: `${platformName}-company-${company.company_id || company.page_id}`,
               platform: config.name,
-              accountId: providerId,
-              accountName: credentials.personal_info.name || `${config.name} User`,
-              accountType: "personal",
-              avatarUrl: credentials.personal_info.avatar_url || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-
-          // Add company/page accounts if exists
-          if (credentials.company_info && Array.isArray(credentials.company_info)) {
-            credentials.company_info.forEach((company: any) => {
-              accounts.push({
-                id: `${platformName}-company-${company.company_id || company.page_id}`,
-                platform: config.name,
-                accountId: company.company_id || company.page_id,
-                accountName: company.company_name || company.page_name || "Company",
-                accountType: "company",
-                avatarUrl: company.company_logo || company.page_logo || null,
-                platformIcon: config.icon,
-                platformColor: config.color,
-              });
-            });
-          }
-
-          // Handle OpenAI - show as connected with masked key
-          if (platformName === "openai" && (credentials.api_key || credentials.masked_key)) {
-            accounts.push({
-              id: `openai-api-${user.id}`,
-              platform: config.name,
-              accountId: credentials.masked_key || "sk-...****",
-              accountName: credentials.masked_key || "API Key Connected",
-              accountType: "personal",
-              avatarUrl: null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-
-          // --- 2. HANDLE INSTAGRAM (Specific details) ---
-          if (platformName === "instagram" && credentials.ig_username) {
-            accounts.push({
-              id: `ig-${credentials.ig_business_id}`,
-              platform: config.name,
-              accountId: credentials.ig_business_id,
-              accountName: credentials.ig_username,
-              accountType: "personal",
-              avatarUrl: credentials.ig_avatar || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-
-          // --- 3. HANDLE FACEBOOK (Specific details) ---
-          if (platformName === "facebook" && credentials.page_id) {
-            accounts.push({
-              id: `fb-${credentials.page_id}`,
-              platform: config.name,
-              accountId: credentials.page_id,
-              accountName: credentials.page_name,
+              accountId: company.company_id || company.page_id,
+              accountName: company.company_name || company.page_name || "Company",
               accountType: "company",
-              avatarUrl: credentials.page_info?.avatar_url || null,
+              avatarUrl: company.company_logo || company.page_logo || null,
               platformIcon: config.icon,
               platformColor: config.color,
+              details: {
+                subtitle: "Company Page",
+                extraInfo: "Administrator Access",
+              },
             });
-          }
-
-          // Handle platforms with just access tokens (no personal_info/company_info structure yet)
-          if (!credentials.personal_info && !credentials.company_info && platformName !== "openai") {
-            if (credentials.access_token || credentials.accessToken) {
-              accounts.push({
-                id: `${platformName}-connected-${user.id}`,
-                platform: config.name,
-                accountId: `${platformName}-${user.id}`,
-                accountName: `${config.name} Account`,
-                accountType: "personal",
-                avatarUrl: null,
-                platformIcon: config.icon,
-                platformColor: config.color,
-              });
-            }
-          }
+          });
         }
       });
 
