@@ -47,7 +47,12 @@ const platformConfigs: Record<string, PlatformDocConfig> = {
   linkedin: {
     fields: [
       { label: "Access Token", name: "accessToken", placeholder: "Enter your LinkedIn access token", required: true },
-      { label: "Refresh Token", name: "refreshToken", placeholder: "Enter your LinkedIn refresh token (optional)" },
+      {
+        label: "Refresh Token",
+        name: "refreshToken",
+        placeholder: "Enter your LinkedIn refresh token",
+        required: true,
+      },
     ],
     steps: [
       {
@@ -87,7 +92,13 @@ const platformConfigs: Record<string, PlatformDocConfig> = {
   facebook: {
     fields: [
       { label: "App ID", name: "appId", placeholder: "Your Facebook App ID", required: true },
-      { label: "App Secret", name: "appSecret", type: "password", placeholder: "Your Facebook App Secret", required: true },
+      {
+        label: "App Secret",
+        name: "appSecret",
+        type: "password",
+        placeholder: "Your Facebook App Secret",
+        required: true,
+      },
       { label: "Access Token", name: "accessToken", placeholder: "Page or User access token", required: true },
     ],
     steps: [
@@ -132,7 +143,13 @@ const platformConfigs: Record<string, PlatformDocConfig> = {
   instagram: {
     fields: [
       { label: "App ID", name: "appId", placeholder: "Your Instagram App ID", required: true },
-      { label: "App Secret", name: "appSecret", type: "password", placeholder: "Your Instagram App Secret", required: true },
+      {
+        label: "App Secret",
+        name: "appSecret",
+        type: "password",
+        placeholder: "Your Instagram App Secret",
+        required: true,
+      },
       { label: "Access Token", name: "accessToken", placeholder: "Instagram Graph API access token", required: true },
     ],
     steps: [
@@ -172,7 +189,13 @@ const platformConfigs: Record<string, PlatformDocConfig> = {
   threads: {
     fields: [
       { label: "App ID", name: "appId", placeholder: "Your Threads App ID", required: true },
-      { label: "App Secret", name: "appSecret", type: "password", placeholder: "Your Threads App Secret", required: true },
+      {
+        label: "App Secret",
+        name: "appSecret",
+        type: "password",
+        placeholder: "Your Threads App Secret",
+        required: true,
+      },
       { label: "Access Token", name: "accessToken", placeholder: "Threads API access token", required: true },
     ],
     steps: [
@@ -210,9 +233,21 @@ const platformConfigs: Record<string, PlatformDocConfig> = {
   twitter: {
     fields: [
       { label: "API Key (Consumer Key)", name: "apiKey", placeholder: "Your Twitter API Key", required: true },
-      { label: "API Secret (Consumer Secret)", name: "apiSecret", type: "password", placeholder: "Your Twitter API Secret", required: true },
+      {
+        label: "API Secret (Consumer Secret)",
+        name: "apiSecret",
+        type: "password",
+        placeholder: "Your Twitter API Secret",
+        required: true,
+      },
       { label: "Access Token", name: "accessToken", placeholder: "Your access token", required: true },
-      { label: "Access Token Secret", name: "accessTokenSecret", type: "password", placeholder: "Your access token secret", required: true },
+      {
+        label: "Access Token Secret",
+        name: "accessTokenSecret",
+        type: "password",
+        placeholder: "Your access token secret",
+        required: true,
+      },
     ],
     steps: [
       {
@@ -248,9 +283,7 @@ const platformConfigs: Record<string, PlatformDocConfig> = {
     docLabel: "Twitter/X API Documentation",
   },
   openai: {
-    fields: [
-      { label: "API Key", name: "apiKey", type: "password", placeholder: "sk-...", required: true },
-    ],
+    fields: [{ label: "API Key", name: "apiKey", type: "password", placeholder: "sk-...", required: true }],
     steps: [
       {
         text: "Go to the OpenAI Platform and sign in (or create an account if you don't have one)",
@@ -348,7 +381,7 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -363,9 +396,7 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl">
-            Connect {platform}
-          </DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-xl">Connect {platform}</DialogTitle>
           <DialogDescription>
             Follow the detailed steps to obtain your credentials, then enter them to connect.
           </DialogDescription>
@@ -384,10 +415,8 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
                   <CheckCircle2 className="h-4 w-4 text-primary" />
                   Enter your credentials
                 </h4>
-                
-                {errors.general && (
-                  <p className="text-sm text-destructive">{errors.general}</p>
-                )}
+
+                {errors.general && <p className="text-sm text-destructive">{errors.general}</p>}
 
                 {config.fields.map((field) => (
                   <div key={field.name}>
@@ -404,9 +433,7 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
                       placeholder={field.placeholder}
                       className={errors[field.name] ? "border-destructive" : ""}
                     />
-                    {errors[field.name] && (
-                      <p className="text-xs text-destructive mt-1">{errors[field.name]}</p>
-                    )}
+                    {errors[field.name] && <p className="text-xs text-destructive mt-1">{errors[field.name]}</p>}
                   </div>
                 ))}
 
@@ -425,7 +452,7 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
               {/* Right column - Instructions */}
               <div className="space-y-4 border-l border-border pl-6">
                 <h4 className="text-sm font-semibold text-foreground">Step-by-step instructions:</h4>
-                
+
                 <ol className="space-y-3">
                   {config.steps.map((step, index) => (
                     <li key={index} className="flex items-start gap-3">
@@ -433,9 +460,7 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
                         {index + 1}
                       </span>
                       <div className="flex-1 space-y-1">
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {step.text}
-                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{step.text}</p>
                         {step.link && (
                           <a
                             href={step.link}
@@ -472,9 +497,7 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
             </div>
           </form>
         ) : (
-          <div className="py-8 text-center text-muted-foreground">
-            Platform configuration not found.
-          </div>
+          <div className="py-8 text-center text-muted-foreground">Platform configuration not found.</div>
         )}
       </DialogContent>
     </Dialog>
