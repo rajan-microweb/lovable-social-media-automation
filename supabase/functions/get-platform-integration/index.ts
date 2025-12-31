@@ -121,34 +121,38 @@ Deno.serve(async (req) => {
 
     console.info(`Found ${data?.length || 0} platform integrations`);
 
-    // Decrypt credentials server-side for encrypted records
-    const decryptedData = await Promise.all((data || []).map(async (integration) => {
-      if (integration.credentials_encrypted && integration.credentials) {
-        try {
-          // Call the decrypt function via RPC
-          const encryptedValue = typeof integration.credentials === 'string' 
-            ? integration.credentials 
-            : integration.credentials;
-          
-          const { data: decrypted, error: decryptError } = await supabase
-            .rpc('decrypt_credentials', { encrypted_creds: encryptedValue });
-          
-          if (decryptError) {
-            console.error('Decryption error for integration:', integration.id, decryptError);
-            return { ...integration, credentials: {} }; // Return empty on error
+    // Process credentials - handle both encrypted and plain JSON formats
+    const processedData = await Promise.all((data || []).map(async (integration) => {
+      if (integration.credentials) {
+        // Check if credentials is already a JSON object (not encrypted)
+        if (typeof integration.credentials === 'object' && integration.credentials !== null) {
+          console.info('Credentials already in JSON format for integration:', integration.id);
+          return integration;
+        }
+        
+        // If credentials_encrypted is true and it's a string, try to decrypt
+        if (integration.credentials_encrypted && typeof integration.credentials === 'string') {
+          try {
+            const { data: decrypted, error: decryptError } = await supabase
+              .rpc('decrypt_credentials', { encrypted_creds: integration.credentials });
+            
+            if (decryptError) {
+              console.error('Decryption error for integration:', integration.id, decryptError);
+              return { ...integration, credentials: {} };
+            }
+            
+            return { ...integration, credentials: decrypted };
+          } catch (e) {
+            console.error('Decryption exception for integration:', integration.id, e);
+            return { ...integration, credentials: {} };
           }
-          
-          return { ...integration, credentials: decrypted };
-        } catch (e) {
-          console.error('Decryption exception for integration:', integration.id, e);
-          return { ...integration, credentials: {} };
         }
       }
       return integration;
     }));
 
     return new Response(
-      JSON.stringify({ data: decryptedData }),
+      JSON.stringify({ data: processedData }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
