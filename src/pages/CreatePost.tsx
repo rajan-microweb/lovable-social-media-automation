@@ -175,14 +175,17 @@ export default function CreatePost() {
       
       setLoadingLinkedInAccounts(true);
       try {
-        const { data, error } = await supabase.functions.invoke('get-platform-integration', {
-          body: { platform_name: 'linkedin', user_id: user.id }
-        });
+        const { data, error } = await supabase
+          .from("platform_integrations")
+          .select("credentials")
+          .eq("user_id", user.id)
+          .eq("platform_name", "linkedin")
+          .eq("status", "active");
 
         if (error) throw error;
 
-        if (data?.data && data.data.length > 0) {
-          const credentials = data.data[0].credentials as LinkedInCredentials;
+        if (data && data.length > 0) {
+          const credentials = data[0].credentials as unknown as LinkedInCredentials;
           const accounts: LinkedInAccount[] = [];
 
           // Add personal account
