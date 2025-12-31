@@ -253,6 +253,34 @@ export default function Accounts() {
             });
           }
 
+          // --- 2. HANDLE INSTAGRAM (Specific details) ---
+          if (platformName === "instagram" && credentials.ig_username) {
+            accounts.push({
+              id: `ig-${credentials.ig_business_id}`,
+              platform: config.name,
+              accountId: credentials.ig_business_id,
+              accountName: credentials.ig_username,
+              accountType: "personal",
+              avatarUrl: credentials.ig_avatar || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+
+          // --- 3. HANDLE FACEBOOK (Specific details) ---
+          if (platformName === "facebook" && credentials.page_id) {
+            accounts.push({
+              id: `fb-${credentials.page_id}`,
+              platform: config.name,
+              accountId: credentials.page_id,
+              accountName: credentials.page_name,
+              accountType: "company",
+              avatarUrl: credentials.page_info?.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+
           // Handle platforms with just access tokens (no personal_info/company_info structure yet)
           if (!credentials.personal_info && !credentials.company_info && platformName !== "openai") {
             if (credentials.access_token || credentials.accessToken) {
@@ -520,7 +548,6 @@ export default function Accounts() {
 
             return (
               <div key={key} className="space-y-4">
-                {/* Header Row: Same as your current code */}
                 <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-muted/50">
@@ -551,36 +578,6 @@ export default function Accounts() {
                     </Button>
                   </div>
                 </div>
-                {/* --- NEW CARD GRID FOR AI --- */}
-                {isConnected && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {platformAccounts.map((account) => (
-                      <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
-                        <CardHeader className="space-y-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                              <Icon className={`h-6 w-6 ${color}`} />
-                            </div>
-                            <div>
-                              <CardTitle className="text-base">{account.accountName}</CardTitle>
-                              <Badge variant="secondary" className="mt-1 text-xs bg-green-500/10 text-green-600">
-                                API Active
-                              </Badge>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span className="h-2 w-2 rounded-full bg-green-500" />
-                              Connected
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -663,11 +660,9 @@ export default function Accounts() {
                             </div>
                           </CardHeader>
                           <CardContent>
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <span className="h-2 w-2 rounded-full bg-green-500" />
-                                Connected
-                              </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span className="h-2 w-2 rounded-full bg-green-500" />
+                              Connected
                             </div>
                           </CardContent>
                         </Card>
