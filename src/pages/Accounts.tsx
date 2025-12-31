@@ -29,6 +29,10 @@ interface ConnectedAccount {
   avatarUrl: string | null;
   platformIcon: React.ComponentType<{ className?: string }>;
   platformColor: string;
+  details?: {
+    subtitle?: string;
+    extraInfo?: string;
+  };
 }
 
 interface PlatformConfig {
@@ -63,7 +67,10 @@ export default function Accounts() {
   });
 
   // State for generic platform connect dialog (including OpenAI)
-  const [platformDialog, setPlatformDialog] = useState<{ open: boolean; platform: string | null }>({ open: false, platform: null });
+  const [platformDialog, setPlatformDialog] = useState<{ open: boolean; platform: string | null }>({
+    open: false,
+    platform: null,
+  });
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -194,76 +201,102 @@ export default function Accounts() {
       data.forEach((integration) => {
         const platformName = integration.platform_name.toLowerCase();
         const config = platformConfigs[platformName];
-
         if (!config) return;
 
         const credentials = integration.credentials as any;
+        if (!credentials) return;
 
-        // Handle all platforms dynamically based on their credentials structure
-        if (credentials) {
-          // Add personal account if exists
-          if (credentials.personal_info) {
-            const providerId = credentials.personal_info.linkedin_id || 
-                              credentials.personal_info.provider_id ||
-                              credentials.personal_info.user_id ||
-                              `${platformName}-personal`;
+        // --- 1. HANDLE OPENAI (Now showing as a standard card) ---
+        if (platformName === "openai") {
+          const mainOrg = credentials.organizations?.[0];
+          accounts.push({
+            id: `openai-${integration.id}`,
+            platform: config.name,
+            accountId: credentials.masked_key || "sk-...****",
+            accountName: credentials.personal_info?.name || "OpenAI API",
+            accountType: "personal",
+            avatarUrl: credentials.personal_info?.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: mainOrg?.org_title || "API Key",
+              extraInfo: mainOrg?.role ? `Role: ${mainOrg.role}` : "Active Access",
+            },
+          });
+          return; // Skip other checks for OpenAI
+        }
+
+        // --- 2. HANDLE INSTAGRAM (Specific details) ---
+        if (platformName === "instagram" && credentials.ig_username) {
+          accounts.push({
+            id: `ig-${credentials.ig_business_id}`,
+            platform: config.name,
+            accountId: credentials.ig_business_id,
+            accountName: credentials.ig_username,
+            accountType: "personal",
+            avatarUrl: credentials.ig_avatar || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: `@${credentials.ig_username}`,
+              extraInfo: `${Number(credentials.ig_followers || 0).toLocaleString()} followers`,
+            },
+          });
+        }
+
+        // --- 3. HANDLE FACEBOOK (Specific details) ---
+        if (platformName === "facebook" && credentials.page_id) {
+          accounts.push({
+            id: `fb-${credentials.page_id}`,
+            platform: config.name,
+            accountId: credentials.page_id,
+            accountName: credentials.page_name,
+            accountType: "company",
+            avatarUrl: credentials.page_info?.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: credentials.category || "Facebook Page",
+              extraInfo: "Active Connection",
+            },
+          });
+        }
+
+        // --- 4. HANDLE LINKEDIN & OTHERS (Standard Structure) ---
+        if (credentials.personal_info && platformName === "linkedin") {
+          accounts.push({
+            id: `${platformName}-personal-${credentials.personal_info.linkedin_id || credentials.personal_info.user_id}`,
+            platform: config.name,
+            accountId: credentials.personal_info.linkedin_id || credentials.personal_info.user_id,
+            accountName: credentials.personal_info.name || `${config.name} User`,
+            accountType: "personal",
+            avatarUrl: credentials.personal_info.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+            details: {
+              subtitle: credentials.personal_info.headline || "Profile",
+              extraInfo: "Personal Account",
+            },
+          });
+        }
+
+        if (Array.isArray(credentials.company_info)) {
+          credentials.company_info.forEach((company: any) => {
             accounts.push({
-              id: `${platformName}-personal-${providerId}`,
+              id: `${platformName}-company-${company.company_id || company.page_id}`,
               platform: config.name,
-              accountId: providerId,
-              accountName: credentials.personal_info.name || `${config.name} User`,
-              accountType: "personal",
-              avatarUrl: credentials.personal_info.avatar_url || null,
+              accountId: company.company_id || company.page_id,
+              accountName: company.company_name || company.page_name || "Company",
+              accountType: "company",
+              avatarUrl: company.company_logo || company.page_logo || null,
               platformIcon: config.icon,
               platformColor: config.color,
+              details: {
+                subtitle: "Company Page",
+                extraInfo: "Administrator Access",
+              },
             });
-          }
-
-          // Add company/page accounts if exists
-          if (credentials.company_info && Array.isArray(credentials.company_info)) {
-            credentials.company_info.forEach((company: any) => {
-              accounts.push({
-                id: `${platformName}-company-${company.company_id || company.page_id}`,
-                platform: config.name,
-                accountId: company.company_id || company.page_id,
-                accountName: company.company_name || company.page_name || "Company",
-                accountType: "company",
-                avatarUrl: company.company_logo || company.page_logo || null,
-                platformIcon: config.icon,
-                platformColor: config.color,
-              });
-            });
-          }
-
-          // Handle OpenAI - show as connected with masked key
-          if (platformName === "openai" && (credentials.api_key || credentials.masked_key)) {
-            accounts.push({
-              id: `openai-api-${user.id}`,
-              platform: config.name,
-              accountId: credentials.masked_key || "sk-...****",
-              accountName: credentials.masked_key || "API Key Connected",
-              accountType: "personal",
-              avatarUrl: null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-
-          // Handle platforms with just access tokens (no personal_info/company_info structure yet)
-          if (!credentials.personal_info && !credentials.company_info && platformName !== "openai") {
-            if (credentials.access_token || credentials.accessToken) {
-              accounts.push({
-                id: `${platformName}-connected-${user.id}`,
-                platform: config.name,
-                accountId: `${platformName}-${user.id}`,
-                accountName: `${config.name} Account`,
-                accountType: "personal",
-                avatarUrl: null,
-                platformIcon: config.icon,
-                platformColor: config.color,
-              });
-            }
-          }
+          });
         }
       });
 
@@ -319,9 +352,10 @@ export default function Accounts() {
     }
 
     // Map display name to key used in DB (lowercase)
-    const platformKey = Object.keys(platformConfigs).find(
-      (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase()
-    ) || platformDialog.platform.toLowerCase();
+    const platformKey =
+      Object.keys(platformConfigs).find(
+        (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
+      ) || platformDialog.platform.toLowerCase();
 
     // POST credentials to external webhook (same flow for all platforms including OpenAI)
     try {
@@ -347,7 +381,7 @@ export default function Accounts() {
       console.error("Error submitting credentials:", error);
       toast.error(`Failed to submit credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
-    
+
     setPlatformDialog({ open: false, platform: null });
   };
 
@@ -540,10 +574,7 @@ export default function Accounts() {
                         Disconnect
                       </Button>
                     )}
-                    <Button
-                      variant={isConnected ? "outline" : "default"}
-                      onClick={() => handleConnect(name)}
-                    >
+                    <Button variant={isConnected ? "outline" : "default"} onClick={() => handleConnect(name)}>
                       {isConnected ? "Update Key" : "Connect"}
                     </Button>
                   </div>
@@ -646,7 +677,10 @@ export default function Accounts() {
         </div>
 
         {/* Disconnect Dialog */}
-        <AlertDialog open={disconnectDialog.open} onOpenChange={(open) => setDisconnectDialog({ open, platformName: null })}>
+        <AlertDialog
+          open={disconnectDialog.open}
+          onOpenChange={(open) => setDisconnectDialog({ open, platformName: null })}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Disconnect {disconnectDialog.platformName}?</AlertDialogTitle>
@@ -657,7 +691,10 @@ export default function Accounts() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDisconnect} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogAction
+                onClick={handleDisconnect}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
                 Disconnect
               </AlertDialogAction>
             </AlertDialogFooter>
