@@ -413,7 +413,7 @@ export default function Accounts() {
 
     setRefreshingPlatform(platformKey);
     try {
-      const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials", {
+      const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials?action=refresh", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
