@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain, Facebook, Youtube } from "lucide-react";
+import { Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain, Facebook, Youtube, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,6 +54,7 @@ export default function Accounts() {
   const { user } = useAuth();
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loginActivity, setLoginActivity] = useState<LoginActivitySession[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [revokingSession, setRevokingSession] = useState<string | null>(null);
@@ -332,17 +333,78 @@ export default function Accounts() {
         (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
       ) || platformDialog.platform.toLowerCase();
 
-    // POST credentials to external webhook (same flow for all platforms including OpenAI)
+    // Step 1: Store credentials in the database first
     try {
-      const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/fetch-credentials", {
+      const { error: upsertError } = await supabase
+        .from("platform_integrations")
+        .upsert(
+          {
+            user_id: user.id,
+            platform_name: platformKey,
+            credentials: fields,
+            status: "active",
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id,platform_name",
+          }
+        );
+
+      if (upsertError) {
+        console.error("Error storing credentials:", upsertError);
+        toast.error("Failed to store credentials in database");
+        return;
+      }
+
+      toast.success("Credentials stored successfully!");
+
+      // Step 2: Only after successful storage, call the n8n webhook
+      try {
+        const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/fetch-credentials", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            platform_name: platformKey,
+            user_id: user.id,
+            ...fields,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Webhook error:", errorText);
+          // Don't show error since credentials are already stored
+        }
+      } catch (webhookError) {
+        console.error("Webhook call failed:", webhookError);
+        // Don't show error since credentials are already stored
+      }
+    } catch (error) {
+      console.error("Error storing credentials:", error);
+      toast.error(`Failed to store credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+
+    setPlatformDialog({ open: false, platform: null });
+  };
+
+  // Handle refresh button click
+  const handleRefresh = async () => {
+    if (!user?.id) {
+      toast.error("Please log in to refresh credentials");
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          platform_name: platformKey,
           user_id: user.id,
-          ...fields,
         }),
       });
 
@@ -351,13 +413,15 @@ export default function Accounts() {
         throw new Error(errorText || `HTTP ${response.status}`);
       }
 
-      toast.success(`${platformDialog.platform} credentials submitted successfully!`);
+      toast.success("Credentials refreshed successfully!");
+      // Refetch accounts to show updated data
+      await fetchConnectedAccounts();
     } catch (error) {
-      console.error("Error submitting credentials:", error);
-      toast.error(`Failed to submit credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
+      console.error("Error refreshing credentials:", error);
+      toast.error(`Failed to refresh credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setRefreshing(false);
     }
-
-    setPlatformDialog({ open: false, platform: null });
   };
 
   const openDisconnectDialog = (platformName: string) => {
@@ -618,12 +682,23 @@ export default function Accounts() {
                         Disconnect
                       </Button>
                     )}
-                    <Button
-                      variant={platformAccounts.length > 0 ? "outline" : "default"}
-                      onClick={() => handleConnect(platformName)}
-                    >
-                      {platformAccounts.length > 0 ? "+ Add Account" : "Connect"}
-                    </Button>
+                    {platformAccounts.length > 0 ? (
+                      <Button
+                        variant="outline"
+                        onClick={handleRefresh}
+                        disabled={refreshing}
+                      >
+                        <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                        {refreshing ? "Refreshing..." : "Refresh"}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="default"
+                        onClick={() => handleConnect(platformName)}
+                      >
+                        Connect
+                      </Button>
+                    )}
                   </div>
                 </div>
 
