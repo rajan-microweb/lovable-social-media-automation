@@ -421,6 +421,7 @@ export default function Accounts() {
         body: JSON.stringify({
           platform_name: platformKey,
           user_id: user.id,
+          type: refresh_credentials,
         }),
       });
 
@@ -434,7 +435,9 @@ export default function Accounts() {
       await fetchConnectedAccounts();
     } catch (error) {
       console.error("Error refreshing credentials:", error);
-      toast.error(`Failed to refresh ${platformName} credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(
+        `Failed to refresh ${platformName} credentials: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     } finally {
       setRefreshingPlatform(null);
     }
@@ -699,12 +702,14 @@ export default function Accounts() {
                       </Button>
                     )}
                     {platformAccounts.length > 0 ? (
-                      <Button 
-                        variant="outline" 
-                        onClick={() => handleRefresh(platformName)} 
+                      <Button
+                        variant="outline"
+                        onClick={() => handleRefresh(platformName)}
                         disabled={refreshingPlatform !== null}
                       >
-                        <RefreshCw className={`h-4 w-4 mr-2 ${refreshingPlatform === platformKey ? "animate-spin" : ""}`} />
+                        <RefreshCw
+                          className={`h-4 w-4 mr-2 ${refreshingPlatform === platformKey ? "animate-spin" : ""}`}
+                        />
                         {refreshingPlatform === platformKey ? "Refreshing..." : "Refresh"}
                       </Button>
                     ) : (
