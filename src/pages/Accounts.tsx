@@ -411,8 +411,6 @@ export default function Accounts() {
         (key) => platformConfigs[key].name.toLowerCase() === platformName.toLowerCase(),
       ) || platformName.toLowerCase();
 
-    const refresh_call = refresh_credentials;
-
     setRefreshingPlatform(platformKey);
     try {
       const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials", {
@@ -423,7 +421,6 @@ export default function Accounts() {
         body: JSON.stringify({
           platform_name: platformKey,
           user_id: user.id,
-          refresh: refresh_call,
         }),
       });
 
