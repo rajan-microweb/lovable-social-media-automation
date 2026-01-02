@@ -9,12 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles, Linkedin } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { AiPromptModal } from "@/components/AiPromptModal";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,27 +22,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-interface LinkedInCredentials {
-  personal_info: {
-    name: string;
-    avatar_url: string;
-    linkedin_id: string;
-  };
-  company_info: Array<{
-    company_name: string;
-    company_id: string;
-    company_logo: string;
-  }>;
-  access_token: string;
-}
-
-interface LinkedInAccount {
-  id: string;
-  name: string;
-  avatar: string;
-  type: 'personal' | 'company';
-}
+import { usePlatformAccounts } from "@/hooks/usePlatformAccounts";
+import { PlatformAccountSelector } from "@/components/posts/PlatformAccountSelector";
 
 // Platform configuration based on post type
 const PLATFORM_MAP: Record<string, string[]> = {
@@ -83,9 +62,10 @@ export default function EditPost() {
   // Form state
   const [typeOfPost, setTypeOfPost] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
-  const [linkedinAccountType, setLinkedinAccountType] = useState<string[]>([]);
-  const [linkedinAccounts, setLinkedinAccounts] = useState<LinkedInAccount[]>([]);
-  const [loadingLinkedInAccounts, setLoadingLinkedInAccounts] = useState(false);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+  
+  // Use the platform accounts hook
+  const { accounts: platformAccounts, loading: loadingPlatformAccounts } = usePlatformAccounts(user?.id, platforms);
   
   // Platform connection state
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
@@ -196,9 +176,9 @@ export default function EditPost() {
         if (data.pdf) setExistingMediaUrl(data.pdf);
       }
 
-      // Parse LinkedIn account type
+      // Parse account type (selected accounts)
       if (data.account_type) {
-        setLinkedinAccountType(data.account_type.split(","));
+        setSelectedAccountIds(data.account_type.split(","));
       }
 
       // Parse platform-specific tags
@@ -229,61 +209,16 @@ export default function EditPost() {
     }
   }, [typeOfPost]);
 
-  // Fetch LinkedIn accounts when LinkedIn is selected
+  // Reset selected accounts when platforms change (but preserve valid ones)
   useEffect(() => {
-    const fetchLinkedInAccounts = async () => {
-      if (!platforms.includes("linkedin") || !user) return;
-      
-      setLoadingLinkedInAccounts(true);
-      try {
-        const { data, error } = await supabase
-          .from("platform_integrations")
-          .select("credentials")
-          .eq("user_id", user.id)
-          .eq("platform_name", "linkedin")
-          .eq("status", "active")
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (data?.credentials) {
-          const credentials = data.credentials as unknown as LinkedInCredentials;
-          const accounts: LinkedInAccount[] = [];
-
-          // Add personal account
-          if (credentials.personal_info) {
-            accounts.push({
-              id: credentials.personal_info.linkedin_id,
-              name: credentials.personal_info.name,
-              avatar: credentials.personal_info.avatar_url,
-              type: 'personal'
-            });
-          }
-
-          // Add company accounts
-          if (credentials.company_info) {
-            credentials.company_info.forEach(company => {
-              accounts.push({
-                id: company.company_id,
-                name: company.company_name,
-                avatar: company.company_logo,
-                type: 'company'
-              });
-            });
-          }
-
-          setLinkedinAccounts(accounts);
-        }
-      } catch (error) {
-        console.error('Error fetching LinkedIn accounts:', error);
-        toast.error("Failed to load LinkedIn accounts");
-      } finally {
-        setLoadingLinkedInAccounts(false);
-      }
-    };
-
-    fetchLinkedInAccounts();
-  }, [platforms, user]);
+    // Filter out account IDs that no longer belong to selected platforms
+    const validAccountIds = selectedAccountIds.filter(id => 
+      platformAccounts.some(account => account.id === id)
+    );
+    if (validAccountIds.length !== selectedAccountIds.length) {
+      setSelectedAccountIds(validAccountIds);
+    }
+  }, [platforms, platformAccounts]);
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     // Check if platform is connected before allowing selection (case-insensitive)
@@ -303,11 +238,11 @@ export default function EditPost() {
     }
   };
 
-  const handleLinkedinAccountTypeChange = (accountId: string) => {
-    if (linkedinAccountType.includes(accountId)) {
-      setLinkedinAccountType(linkedinAccountType.filter((id) => id !== accountId));
+  const handleAccountToggle = (accountId: string) => {
+    if (selectedAccountIds.includes(accountId)) {
+      setSelectedAccountIds(selectedAccountIds.filter((id) => id !== accountId));
     } else {
-      setLinkedinAccountType([...linkedinAccountType, accountId]);
+      setSelectedAccountIds([...selectedAccountIds, accountId]);
     }
   };
 
@@ -412,10 +347,10 @@ export default function EditPost() {
         }
       }
 
-      // Build account_type string
+      // Build account_type string from selected accounts
       let accountTypeValue = "";
-      if (platforms.includes("linkedin") && linkedinAccountType.length > 0) {
-        accountTypeValue = linkedinAccountType.join(",");
+      if (selectedAccountIds.length > 0) {
+        accountTypeValue = selectedAccountIds.join(",");
       }
 
       const data = {
@@ -494,7 +429,7 @@ export default function EditPost() {
   const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
   const showInstagramFields = platforms.includes("instagram");
   const showFacebookFields = platforms.includes("facebook");
-  const showLinkedinAccountType = platforms.includes("linkedin");
+  const showAccountSelectors = platforms.length > 0;
   const showSchedule = typeOfPost !== "";
 
   // Media label based on type
@@ -623,39 +558,53 @@ export default function EditPost() {
                 </div>
               )}
 
-              {/* LinkedIn Account Type - Show when LinkedIn is selected */}
-              {showLinkedinAccountType && (
-                <div className="space-y-2">
-                  <Label>
-                    LinkedIn Account Type <span className="text-destructive">*</span>
-                  </Label>
-                  {loadingLinkedInAccounts ? (
-                    <div className="text-sm text-muted-foreground">Loading accounts...</div>
-                  ) : linkedinAccounts.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">
-                      Please connect your LinkedIn account first from the Accounts page.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {linkedinAccounts.map((account) => (
-                        <div key={account.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`li-${account.id}`}
-                            checked={linkedinAccountType.includes(account.id)}
-                            onCheckedChange={() => handleLinkedinAccountTypeChange(account.id)}
-                          />
-                          <label htmlFor={`li-${account.id}`} className="text-sm cursor-pointer flex items-center gap-2">
-                            <Avatar className="w-6 h-6">
-                              <AvatarImage src={account.avatar || undefined} alt={account.name} />
-                              <AvatarFallback className="bg-[#0077B5]">
-                                <Linkedin className="w-3 h-3 text-white" />
-                              </AvatarFallback>
-                            </Avatar>
-                            <span>{account.name} ({account.type === 'personal' ? 'Personal' : 'Company'})</span>
-                          </label>
-                        </div>
-                      ))}
-                    </div>
+              {/* Platform Account Selectors - Show for each selected platform */}
+              {showAccountSelectors && (
+                <div className="space-y-4">
+                  {platforms.includes("linkedin") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="linkedin"
+                    />
+                  )}
+                  {platforms.includes("facebook") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="facebook"
+                    />
+                  )}
+                  {platforms.includes("instagram") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="instagram"
+                    />
+                  )}
+                  {platforms.includes("youtube") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="youtube"
+                    />
+                  )}
+                  {platforms.includes("twitter") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="twitter"
+                    />
                   )}
                 </div>
               )}
