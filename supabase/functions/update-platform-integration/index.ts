@@ -43,8 +43,8 @@ const updatePlatformIntegrationSchema = z.object({
     .strict(),
 });
 
-// Helper function to append credentials - arrays get new items appended
-function appendCredentials(
+// Helper function to combine credentials - append all then deduplicate arrays by unique ID
+function combineCredentials(
   existing: Record<string, unknown>,
   incoming: Record<string, unknown>
 ): Record<string, unknown> {
@@ -52,12 +52,20 @@ function appendCredentials(
 
   for (const [key, value] of Object.entries(incoming)) {
     if (Array.isArray(value) && Array.isArray(existing[key])) {
-      // Simply append new items to existing array
-      result[key] = [...(existing[key] as unknown[]), ...value];
+      // Combine all items then deduplicate by unique identifier
+      const combined = [...(existing[key] as Record<string, unknown>[]), ...(value as Record<string, unknown>[])];
+      
+      // Deduplicate: keep latest occurrence of each unique item
+      const seen = new Map<string, Record<string, unknown>>();
+      for (const item of combined) {
+        const id = String(item.id || item.page_id || item.account_id || item.access_token || JSON.stringify(item));
+        seen.set(id, item); // Later items override earlier ones
+      }
+      result[key] = Array.from(seen.values());
     } else if (value !== null && typeof value === 'object' && !Array.isArray(value) && 
                existing[key] && typeof existing[key] === 'object' && !Array.isArray(existing[key])) {
       // Recursively handle nested objects
-      result[key] = appendCredentials(existing[key] as Record<string, unknown>, value as Record<string, unknown>);
+      result[key] = combineCredentials(existing[key] as Record<string, unknown>, value as Record<string, unknown>);
     } else {
       // Override primitive values or add new keys
       result[key] = value;
@@ -138,13 +146,12 @@ Deno.serve(async (req) => {
       credentials_encrypted: true, // Skip encryption trigger, store as plain JSON
     };
 
-    // Append credentials if provided - combine existing with new
+    // Combine credentials if provided - merge existing with new, deduplicate by ID
     if (updates.credentials) {
       const existingCredentials = existingData?.credentials || {};
-      // Append new items to arrays, override primitives
-      const appendedCredentials = appendCredentials(existingCredentials as Record<string, unknown>, updates.credentials);
-      updateData.credentials = appendedCredentials;
-      console.info("Appended credentials:", JSON.stringify(appendedCredentials, null, 2));
+      const combinedCredentials = combineCredentials(existingCredentials as Record<string, unknown>, updates.credentials);
+      updateData.credentials = combinedCredentials;
+      console.info("Combined credentials:", JSON.stringify(combinedCredentials, null, 2));
     }
 
     // Add status if provided
