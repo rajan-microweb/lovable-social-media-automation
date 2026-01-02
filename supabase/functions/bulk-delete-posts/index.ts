@@ -69,9 +69,17 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check if posts exist
+    if (!posts || posts.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, deleted: 0, message: "Posts already deleted or not found" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Check all posts belong to the user
-    const unauthorized = posts?.filter((p) => p.user_id !== user.id) || [];
-    if (unauthorized.length > 0 || posts?.length !== post_ids.length) {
+    const unauthorized = posts.filter((p) => p.user_id !== user.id);
+    if (unauthorized.length > 0) {
       return new Response(
         JSON.stringify({ error: "You can only delete your own posts" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
