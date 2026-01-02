@@ -930,7 +930,7 @@ export default function CreatePost() {
                       value={facebookTags}
                       onChange={(e) => setFacebookTags(e.target.value)}
                       placeholder="Enter URLs of Facebook Profile to tag or mention..."
-                      required={showFacebookFields}
+                      {/* required={showFacebookFields} */}
                     />
                   </div>
                 </div>
