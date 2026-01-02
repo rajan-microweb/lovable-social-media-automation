@@ -43,37 +43,6 @@ const updatePlatformIntegrationSchema = z.object({
     .strict(),
 });
 
-// Helper function to combine credentials - append all then deduplicate arrays by unique ID
-function combineCredentials(
-  existing: Record<string, unknown>,
-  incoming: Record<string, unknown>
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...existing };
-
-  for (const [key, value] of Object.entries(incoming)) {
-    if (Array.isArray(value) && Array.isArray(existing[key])) {
-      // Combine all items then deduplicate by unique identifier
-      const combined = [...(existing[key] as Record<string, unknown>[]), ...(value as Record<string, unknown>[])];
-      
-      // Deduplicate: keep latest occurrence of each unique item
-      const seen = new Map<string, Record<string, unknown>>();
-      for (const item of combined) {
-        const id = String(item.id || item.page_id || item.account_id || item.access_token || JSON.stringify(item));
-        seen.set(id, item); // Later items override earlier ones
-      }
-      result[key] = Array.from(seen.values());
-    } else if (value !== null && typeof value === 'object' && !Array.isArray(value) && 
-               existing[key] && typeof existing[key] === 'object' && !Array.isArray(existing[key])) {
-      // Recursively handle nested objects
-      result[key] = combineCredentials(existing[key] as Record<string, unknown>, value as Record<string, unknown>);
-    } else {
-      // Override primitive values or add new keys
-      result[key] = value;
-    }
-  }
-
-  return result;
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -124,34 +93,16 @@ Deno.serve(async (req) => {
 
     console.info("Updating platform integration:", { platform_name, user_id, updates });
 
-    // First, fetch existing credentials to merge with new ones
-    const { data: existingData, error: fetchError } = await supabase
-      .from("platform_integrations")
-      .select("credentials")
-      .eq("platform_name", platform_name)
-      .eq("user_id", user_id)
-      .maybeSingle();
-
-    if (fetchError) {
-      console.error("Error fetching existing credentials:", fetchError);
-      return new Response(JSON.stringify({ error: fetchError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Build update data with proper structure
+    // Build update data - full replacement of credentials
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       credentials_encrypted: true, // Skip encryption trigger, store as plain JSON
     };
 
-    // Combine credentials if provided - merge existing with new, deduplicate by ID
+    // Full replacement: incoming credentials completely replace existing ones
     if (updates.credentials) {
-      const existingCredentials = existingData?.credentials || {};
-      const combinedCredentials = combineCredentials(existingCredentials as Record<string, unknown>, updates.credentials);
-      updateData.credentials = combinedCredentials;
-      console.info("Combined credentials:", JSON.stringify(combinedCredentials, null, 2));
+      updateData.credentials = updates.credentials;
+      console.info("Replaced credentials:", JSON.stringify(updates.credentials, null, 2));
     }
 
     // Add status if provided
