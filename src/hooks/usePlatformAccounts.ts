@@ -174,17 +174,7 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
           // --- INSTAGRAM ---
           if (platformName === "instagram") {
             const creds = credentials as unknown as InstagramCredentials;
-            // Personal account
-            if (creds.personal_info) {
-              allAccounts.push({
-                id: creds.personal_info.user_id,
-                name: creds.personal_info.name,
-                avatar: creds.personal_info.avatar_url,
-                type: 'personal',
-                platform: 'instagram'
-              });
-            }
-            // Accounts array (new format)
+            // Accounts array (new format) - use ig_business_id as the account identifier
             if (Array.isArray(creds.accounts)) {
               creds.accounts.forEach(account => {
                 allAccounts.push({
