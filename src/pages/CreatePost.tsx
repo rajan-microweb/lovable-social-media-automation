@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles } from "lucide-react";
+import { Sparkles, X, Plus, Loader2 } from "lucide-react";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
   AlertDialog,
@@ -100,6 +100,12 @@ export default function CreatePost() {
   const [videoUrl, setVideoUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
 
+  // Carousel state - multiple images
+  const [carouselImages, setCarouselImages] = useState<string[]>([]);
+  const [carouselFiles, setCarouselFiles] = useState<File[]>([]);
+  const [carouselGenerating, setCarouselGenerating] = useState(false);
+  const [carouselAiPrompt, setCarouselAiPrompt] = useState("");
+
   // Available platforms based on post type
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
 
@@ -141,6 +147,11 @@ export default function CreatePost() {
       setYoutubeDescription("");
       setInstagramTags("");
       setFacebookTags("");
+      // Reset carousel images when switching away from carousel
+      if (typeOfPost !== "carousel") {
+        setCarouselImages([]);
+        setCarouselFiles([]);
+      }
     } else {
       setAvailablePlatforms([]);
       setPlatforms([]);
@@ -256,9 +267,34 @@ export default function CreatePost() {
       let uploadedUrl = null;
       let thumbnailUrl = null;
 
-      // Priority: AI URLs over file uploads
-      if (imageUrl || videoUrl || pdfUrl) {
-        if (typeOfPost === "image" || typeOfPost === "carousel") {
+      // Handle carousel separately - multiple images stored as comma-separated URLs
+      if (typeOfPost === "carousel") {
+        const allCarouselUrls: string[] = [...carouselImages]; // AI-generated URLs
+        
+        // Upload any files that were selected
+        for (const file of carouselFiles) {
+          const url = await uploadFile(file, "images");
+          allCarouselUrls.push(url);
+        }
+        
+        if (allCarouselUrls.length === 0) {
+          toast.error("Please add at least one image for the carousel");
+          setLoading(false);
+          setUploading(false);
+          return;
+        }
+        
+        if (allCarouselUrls.length > 10) {
+          toast.error("Maximum 10 images allowed for carousel");
+          setLoading(false);
+          setUploading(false);
+          return;
+        }
+        
+        uploadedUrl = allCarouselUrls.join(",");
+      } else if (imageUrl || videoUrl || pdfUrl) {
+        // Priority: AI URLs over file uploads for non-carousel
+        if (typeOfPost === "image") {
           uploadedUrl = imageUrl;
         } else if (typeOfPost === "video" || typeOfPost === "shorts") {
           uploadedUrl = videoUrl;
@@ -267,7 +303,7 @@ export default function CreatePost() {
         }
       } else if (mediaFile) {
         let folder = "";
-        if (typeOfPost === "image" || typeOfPost === "carousel") {
+        if (typeOfPost === "image") {
           folder = "images";
         } else if (typeOfPost === "video" || typeOfPost === "shorts") {
           folder = "videos";
@@ -356,11 +392,90 @@ export default function CreatePost() {
     }
   };
 
+  // Carousel-specific functions
+  const handleCarouselFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const totalCount = carouselImages.length + carouselFiles.length + files.length;
+    
+    if (totalCount > 10) {
+      toast.error("Maximum 10 images allowed for carousel");
+      return;
+    }
+    
+    setCarouselFiles([...carouselFiles, ...files]);
+  };
+
+  const removeCarouselFile = (index: number) => {
+    setCarouselFiles(carouselFiles.filter((_, i) => i !== index));
+  };
+
+  const removeCarouselImage = (index: number) => {
+    setCarouselImages(carouselImages.filter((_, i) => i !== index));
+  };
+
+  const generateCarouselAiImage = async () => {
+    if (!openaiConnected) {
+      setShowOpenAIAlert(true);
+      return;
+    }
+
+    if (!carouselAiPrompt.trim()) {
+      toast.error("Please enter a prompt for AI generation");
+      return;
+    }
+
+    const totalCount = carouselImages.length + carouselFiles.length;
+    if (totalCount >= 10) {
+      toast.error("Maximum 10 images reached");
+      return;
+    }
+
+    setCarouselGenerating(true);
+
+    try {
+      const payload = {
+        userId: user?.id,
+        apiKey: openaiApiKey,
+        platforms: platforms,
+        typeOfPost: typeOfPost,
+        imagePrompt: carouselAiPrompt,
+      };
+
+      const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate image");
+      }
+
+      const data = await response.json();
+
+      if (data.imageUrl) {
+        setCarouselImages([...carouselImages, data.imageUrl]);
+        setCarouselAiPrompt(""); // Clear prompt after successful generation
+        toast.success(`Image ${carouselImages.length + 1} generated successfully`);
+      } else {
+        throw new Error("Invalid response from AI generator");
+      }
+    } catch (error: any) {
+      console.error("AI generation error:", error);
+      toast.error(error.message || "Failed to generate image");
+    } finally {
+      setCarouselGenerating(false);
+    }
+  };
+
+  const getTotalCarouselCount = () => carouselImages.length + carouselFiles.length;
+
   // Field visibility logic
   const showTextContent = typeOfPost && typeOfPost !== "pdf";
   const showPdfTextContent = typeOfPost === "pdf";
   const showArticleFields = typeOfPost === "article";
-  const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article";
+  const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article" && typeOfPost !== "carousel";
+  const showCarouselUpload = typeOfPost === "carousel";
   const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
   const showInstagramFields = platforms.includes("instagram");
   const showFacebookFields = platforms.includes("facebook");
@@ -704,7 +819,7 @@ export default function CreatePost() {
                       setPdfUrl("");
                     }}
                     accept={
-                      typeOfPost === "image" || typeOfPost === "carousel"
+                      typeOfPost === "image"
                         ? "image/*"
                         : typeOfPost === "video" || typeOfPost === "shorts"
                           ? "video/*"
@@ -722,7 +837,7 @@ export default function CreatePost() {
                       <p className="text-sm font-medium mb-2">Preview:</p>
 
                       {/* Image Preview */}
-                      {(typeOfPost === "image" || typeOfPost === "carousel") && (
+                      {typeOfPost === "image" && (
                         <>
                           {mediaFile && (
                             <img
@@ -794,7 +909,130 @@ export default function CreatePost() {
                 </div>
               )}
 
-              {/* PDF Text Content - Show only for PDF type */}
+              {/* Carousel Upload - Show only for carousel type */}
+              {showCarouselUpload && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>
+                      Carousel Images ({getTotalCarouselCount()}/10) <span className="text-destructive">*</span>
+                    </Label>
+                  </div>
+
+                  {/* AI Generation Section */}
+                  <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">AI Generate Images</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Describe the image you want to generate..."
+                        value={carouselAiPrompt}
+                        onChange={(e) => setCarouselAiPrompt(e.target.value)}
+                        disabled={carouselGenerating || getTotalCarouselCount() >= 10}
+                      />
+                      <Button
+                        type="button"
+                        onClick={generateCarouselAiImage}
+                        disabled={carouselGenerating || getTotalCarouselCount() >= 10 || !carouselAiPrompt.trim()}
+                        className="shrink-0"
+                      >
+                        {carouselGenerating ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Generate
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Generate images one by one. Each generation adds one image to the carousel.
+                    </p>
+                  </div>
+
+                  {/* File Upload Section */}
+                  <div className="space-y-2">
+                    <Label htmlFor="carouselFiles">Or Upload Images from Device</Label>
+                    <Input
+                      id="carouselFiles"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleCarouselFilesChange}
+                      disabled={getTotalCarouselCount() >= 10}
+                    />
+                  </div>
+
+                  {/* Preview Grid */}
+                  {getTotalCarouselCount() > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Preview:</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {/* AI Generated Images */}
+                        {carouselImages.map((url, index) => (
+                          <div key={`ai-${index}`} className="relative group">
+                            <img
+                              src={url}
+                              alt={`Carousel image ${index + 1}`}
+                              className="w-full h-24 object-cover rounded-lg border"
+                            />
+                            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded">
+                              AI
+                            </div>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => removeCarouselImage(index)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                            <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                              {index + 1}
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {/* Uploaded Files */}
+                        {carouselFiles.map((file, index) => (
+                          <div key={`file-${index}`} className="relative group">
+                            <img
+                              src={URL.createObjectURL(file)}
+                              alt={file.name}
+                              className="w-full h-24 object-cover rounded-lg border"
+                            />
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => removeCarouselFile(index)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                            <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                              {carouselImages.length + index + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {getTotalCarouselCount() === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4 border-2 border-dashed rounded-lg">
+                      No images added yet. Generate with AI or upload from your device.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {showPdfTextContent && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
