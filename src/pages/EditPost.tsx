@@ -861,12 +861,14 @@ export default function EditPost() {
                       )}
                     </div>
                   )}
-                  {typeOfPost === "video" && platforms.includes("instagram") && (
-                    <p className="text-sm text-blue-600">(In Instagram, Now Video is posted as Reel...)</p>
-                  )}
-                  {typeOfPost === "short" && platforms.includes("facebook") && (
-                    <p className="text-sm text-blue-600">(In Facebook, Now Reel is posted as Video...)</p>
-                  )}
+                  {typeOfPost === "video" &&
+                    platforms.includes("instagram") && (
+                      <p className="text-sm text-blue-600">(In Instagram, Now Video is posted as Reel...)</p>
+                    ) &&
+                    typeOfPost === "short" &&
+                    platforms.includes("facebook") && (
+                      <p className="text-sm text-blue-600">(In Facebook, Now Reel is posted as Video...)</p>
+                    )}
                 </div>
               )}
 
