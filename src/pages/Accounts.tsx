@@ -325,8 +325,21 @@ export default function Accounts() {
 
         // --- HANDLE YOUTUBE ---
         if (platformName === "youtube") {
-          // Personal/channel info from credentials
-          if (credentials.personal_info) {
+          // channel_info format (from n8n webhook)
+          if (credentials.channel_info) {
+            accounts.push({
+              id: `yt-channel-${credentials.channel_info.youtube_id}`,
+              platform: config.name,
+              accountId: credentials.channel_info.youtube_id,
+              accountName: credentials.channel_info.name || credentials.channel_info.handle || "YouTube Channel",
+              accountType: "company",
+              avatarUrl: credentials.channel_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Personal/channel info from credentials (alternative format)
+          else if (credentials.personal_info) {
             accounts.push({
               id: `yt-personal-${credentials.personal_info.user_id || credentials.personal_info.channel_id}`,
               platform: config.name,
@@ -354,7 +367,7 @@ export default function Accounts() {
             });
           }
           // Legacy/simple format - check if we have basic token info
-          if (!credentials.personal_info && !credentials.channels && (credentials.accessToken || credentials.clientId)) {
+          if (!credentials.channel_info && !credentials.personal_info && !credentials.channels && (credentials.accessToken || credentials.clientId)) {
             accounts.push({
               id: `yt-${integration.id}`,
               platform: config.name,

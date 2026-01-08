@@ -56,6 +56,13 @@ interface InstagramCredentials {
 }
 
 interface YouTubeCredentials {
+  channel_info?: {
+    youtube_id: string;
+    name: string;
+    handle?: string;
+    avatar_url?: string;
+    subscriber_count?: string;
+  };
   personal_info?: {
     name: string;
     avatar_url: string;
@@ -202,8 +209,18 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
           // --- YOUTUBE ---
           if (platformName === "youtube") {
             const creds = credentials as unknown as YouTubeCredentials;
-            // Personal account
-            if (creds.personal_info) {
+            // channel_info format (from n8n webhook)
+            if (creds.channel_info) {
+              allAccounts.push({
+                id: creds.channel_info.youtube_id,
+                name: creds.channel_info.name || creds.channel_info.handle || 'YouTube Channel',
+                avatar: creds.channel_info.avatar_url || null,
+                type: 'channel',
+                platform: 'youtube'
+              });
+            }
+            // Personal account (alternative format)
+            else if (creds.personal_info) {
               allAccounts.push({
                 id: creds.personal_info.user_id || creds.personal_info.channel_id || 'yt-personal',
                 name: creds.personal_info.name || creds.personal_info.channel_name || 'YouTube Account',
@@ -225,7 +242,7 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
               });
             }
             // Legacy format - just tokens stored
-            if (!creds.personal_info && !creds.channels && (creds.accessToken || creds.clientId)) {
+            if (!creds.channel_info && !creds.personal_info && !creds.channels && (creds.accessToken || creds.clientId)) {
               allAccounts.push({
                 id: creds.clientId || 'youtube-legacy',
                 name: 'YouTube Account',
