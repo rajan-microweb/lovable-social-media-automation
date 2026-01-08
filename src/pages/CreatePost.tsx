@@ -50,7 +50,7 @@ const postSchema = z.object({
   description: z.string().optional(),
   url: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
-  metadataArray: z.array(z.string()).optional(),
+  metadata: z.array(z.string()).optional(),
   status: z.enum(["draft", "scheduled", "published"]),
   scheduled_at: z.string().optional(),
 });
@@ -379,7 +379,7 @@ export default function CreatePost() {
         description: undefined,
         url: undefined,
         tags: tagsArray,
-        metadata: metadataArray,
+        metadata: metadata,
         status: status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       };
@@ -399,7 +399,7 @@ export default function CreatePost() {
         description: data.description ?? null,
         url: data.url ?? null,
         tags: data.tags.length > 0 ? data.tags : null,
-        metadata: data.metadataArray.length > 0 ? data.metadataArray : null,
+        metadata: data.metadata.length > 0 ? data.metadata : null,
         status: data.status,
         scheduled_at: data.scheduled_at ?? null,
       });
