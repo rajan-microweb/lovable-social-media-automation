@@ -34,14 +34,44 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // API Key authentication
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+    // Check for API key auth first (for external integrations like n8n)
     const apiKey = req.headers.get('x-api-key');
     const expectedApiKey = Deno.env.get('N8N_API_KEY');
+    const authHeader = req.headers.get('Authorization');
 
-    if (!apiKey || apiKey !== expectedApiKey) {
-      console.error('Invalid or missing API key');
+    let userId: string | null = null;
+    let isApiKeyAuth = false;
+
+    if (apiKey && apiKey === expectedApiKey) {
+      // API key authentication (external integrations)
+      isApiKeyAuth = true;
+      console.log('Authenticated via API key');
+    } else if (authHeader?.startsWith('Bearer ')) {
+      // JWT authentication (frontend)
+      const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+      
+      const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('JWT validation failed:', userError);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      userId = user.id;
+      console.log('Authenticated via JWT for user:', userId);
+    } else {
+      console.error('No valid authentication provided');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
+        JSON.stringify({ error: 'Unauthorized - Missing authentication' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -55,17 +85,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
     // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { post_id, user_id } = body;
+    const { post_id, user_id: bodyUserId } = body;
 
-    // Validate user_id is required
-    if (!user_id) {
+    // For API key auth, user_id must be provided in body
+    // For JWT auth, use the authenticated user's ID
+    const targetUserId = isApiKeyAuth ? bodyUserId : userId;
+
+    if (!targetUserId) {
       return new Response(
         JSON.stringify({ error: 'user_id is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -73,7 +103,7 @@ Deno.serve(async (req) => {
     }
 
     const uuidSchema = z.string().uuid();
-    const userIdResult = uuidSchema.safeParse(user_id);
+    const userIdResult = uuidSchema.safeParse(targetUserId);
     if (!userIdResult.success) {
       return new Response(
         JSON.stringify({ error: 'Invalid user_id format' }),
@@ -89,9 +119,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Deleting post:', post_id, 'for user:', user_id);
+    console.log('Deleting post:', post_id, 'for user:', targetUserId);
 
-    // Verify ownership - verify against provided user_id
+    // Verify ownership
     const { data: post, error: fetchError } = await supabase
       .from('posts')
       .select('user_id')
@@ -106,7 +136,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (post.user_id !== user_id) {
+    if (post.user_id !== targetUserId) {
       console.error('Unauthorized: User does not own this post');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
