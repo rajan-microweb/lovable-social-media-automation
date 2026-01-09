@@ -20,24 +20,29 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
+  const [processingReset, setProcessingReset] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Detect password reset flow from URL or auth event
+  // Detect password reset flow from auth event
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    // If URL has reset=true, show loading while Supabase processes tokens
+    if (searchParams.get("reset") === "true") {
+      setProcessingReset(true);
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
+        setProcessingReset(false);
         setShowResetPassword(true);
+      } else if (event === "SIGNED_IN" && searchParams.get("reset") !== "true") {
+        // Normal sign in, redirect to dashboard
+        navigate("/dashboard");
       }
     });
 
-    // Check if we're in reset mode from URL
-    if (searchParams.get("reset") === "true") {
-      setShowResetPassword(true);
-    }
-
     return () => subscription.unsubscribe();
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   const handleResetPassword = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -167,6 +172,23 @@ export default function Auth() {
       setLoading(false);
     }
   };
+
+  // Show loading while processing reset tokens
+  if (processingReset) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl">Processing...</CardTitle>
+            <CardDescription>Please wait while we verify your reset link</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Show reset password form when user clicks on reset link from email
   if (showResetPassword) {
