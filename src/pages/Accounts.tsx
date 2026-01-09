@@ -96,16 +96,16 @@ export default function Accounts() {
       icon: Instagram,
       color: "text-[#E4405F]",
     },
-    twitter: {
-      name: "Twitter",
-      icon: Twitter,
-      color: "text-[#1DA1F2]",
-    },
-    youtube: {
-      name: "YouTube",
-      icon: Youtube,
-      color: "text-[#FF0000]",
-    },
+    // twitter: {
+    //   name: "Twitter",
+    //   icon: Twitter,
+    //   color: "text-[#1DA1F2]",
+    // },
+    // youtube: {
+    //   name: "YouTube",
+    //   icon: Youtube,
+    //   color: "text-[#FF0000]",
+    // },
     openai: {
       name: "OpenAI",
       icon: Brain,
@@ -367,7 +367,12 @@ export default function Accounts() {
             });
           }
           // Legacy/simple format - check if we have basic token info
-          if (!credentials.channel_info && !credentials.personal_info && !credentials.channels && (credentials.accessToken || credentials.clientId)) {
+          if (
+            !credentials.channel_info &&
+            !credentials.personal_info &&
+            !credentials.channels &&
+            (credentials.accessToken || credentials.clientId)
+          ) {
             accounts.push({
               id: `yt-${integration.id}`,
               platform: config.name,
@@ -902,10 +907,10 @@ export default function Accounts() {
                                           : "bg-purple-500/10 text-purple-600"
                                     }`}
                                   >
-                                    {account.accountType === "personal" 
-                                      ? "Personal" 
-                                      : account.platform === "YouTube" 
-                                        ? "Channel" 
+                                    {account.accountType === "personal"
+                                      ? "Personal"
+                                      : account.platform === "YouTube"
+                                        ? "Channel"
                                         : "Company"}
                                   </Badge>
                                 </div>
