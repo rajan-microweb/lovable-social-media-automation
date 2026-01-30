@@ -66,8 +66,36 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ 
+    // Store the token securely in DB - never return it to n8n
+    const newCredentials = {
       access_token: data.access_token,
+      expires_at: Date.now() + (data.expires_in * 1000),
+    };
+
+    const encryptedCredentials = await encryptCredentials(JSON.stringify(newCredentials));
+
+    const { error: upsertError } = await supabase
+      .from("platform_integrations")
+      .upsert({
+        user_id,
+        platform_name: "facebook",
+        credentials: encryptedCredentials,
+        credentials_encrypted: true,
+        status: "active",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,platform_name" });
+
+    if (upsertError) {
+      return new Response(JSON.stringify({ error: "Failed to store credentials" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Return only success status - NO credentials
+    return new Response(JSON.stringify({ 
+      success: true,
+      message: "Token exchanged and stored securely",
       expires_in: data.expires_in,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

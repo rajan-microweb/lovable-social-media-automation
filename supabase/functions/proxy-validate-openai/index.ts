@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { safeDecryptCredentials } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,28 +22,65 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { openai_key, user_id } = await req.json();
+    const { user_id } = await req.json();
 
-    if (!openai_key || !user_id) {
-      return new Response(JSON.stringify({ error: "Missing openai_key or user_id" }), {
+    if (!user_id) {
+      return new Response(JSON.stringify({ error: "Missing user_id" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Validate the OpenAI key
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get OpenAI integration from DB
+    const { data: integration, error: intError } = await supabase
+      .from("platform_integrations")
+      .select("credentials")
+      .eq("user_id", user_id)
+      .eq("platform_name", "openai")
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (intError || !integration) {
+      return new Response(JSON.stringify({ error: "OpenAI integration not found", valid: false }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const credentials = await safeDecryptCredentials(integration.credentials);
+    const openaiKey = credentials.api_key as string;
+
+    if (!openaiKey) {
+      return new Response(JSON.stringify({ error: "No OpenAI API key found", valid: false }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Validate the stored OpenAI key
     const response = await fetch("https://api.openai.com/v1/models", {
-      headers: { Authorization: `Bearer ${openai_key}` },
+      headers: { Authorization: `Bearer ${openaiKey}` },
     });
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ error: "Invalid OpenAI API key", valid: false }), {
+      return new Response(JSON.stringify({ 
+        valid: false, 
+        message: "Stored OpenAI API key is invalid or expired" 
+      }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ valid: true, message: "OpenAI API key is valid" }), {
+    // Return only validation status - NO credentials
+    return new Response(JSON.stringify({ 
+      valid: true, 
+      message: "OpenAI API key is valid" 
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

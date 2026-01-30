@@ -75,13 +75,38 @@ Deno.serve(async (req) => {
       });
     }
 
-    const pages = (data.data || []).map((page: any) => ({
-      page_id: page.id,
-      page_name: page.name,
-      page_access_token: page.access_token,
-      picture_url: page.picture?.data?.url,
-    }));
+    // Store page tokens securely - map tokens by page_id
+    const pageTokens: Record<string, string> = {};
+    const pages = (data.data || []).map((page: any) => {
+      pageTokens[page.id] = page.access_token;
+      // Return only non-sensitive data
+      return {
+        page_id: page.id,
+        page_name: page.name,
+        picture_url: page.picture?.data?.url,
+      };
+    });
 
+    // Update credentials with page tokens stored securely
+    const updatedCredentials = {
+      ...credentials,
+      page_tokens: pageTokens,
+    };
+
+    const { encryptCredentials } = await import("../_shared/encryption.ts");
+    const encryptedCredentials = await encryptCredentials(JSON.stringify(updatedCredentials));
+
+    await supabase
+      .from("platform_integrations")
+      .update({
+        credentials: encryptedCredentials,
+        credentials_encrypted: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user_id)
+      .eq("platform_name", "facebook");
+
+    // Return only non-sensitive page info - NO tokens
     return new Response(JSON.stringify({ pages }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
