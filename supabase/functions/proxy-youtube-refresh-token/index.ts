@@ -111,8 +111,10 @@ Deno.serve(async (req) => {
       })
       .eq("id", integration.id);
 
+    // Return only success status - NO credentials
     return new Response(JSON.stringify({ 
-      access_token: data.access_token,
+      success: true,
+      message: "Token refreshed and stored securely",
       expires_in: data.expires_in,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
