@@ -1,145 +1,250 @@
 
-## Plan: Standardize Proxy Edge Functions with Database-Driven Credential Pattern
 
-### Current State Analysis
+# LinkedIn Automatic Token Refresh with Expiration Monitoring
 
-**Current SMA Project Implementation:**
-- ✅ Uses AES-256-GCM encryption for storing credentials in `platform_integrations` table
-- ✅ All 8 proxy functions already use `user_id` parameter to fetch credentials from database
-- ✅ Credentials are decrypted internally using `safeDecryptCredentials` helper
-- ✅ Proxy functions return only non-sensitive metadata (no tokens exposed)
-- ✅ All functions validate `N8N_API_KEY` header for authentication
-- ⚠️ **Issue**: Inconsistency with CHATBOT project's cleaner helper utilities structure
+## Overview
 
-**CHATBOT Project Pattern (Reference):**
-- Uses shared utility functions in a separate module
-- Has centralized encryption/decryption helpers with clear function signatures
-- Cleaner response formatting with standardized JSON structure
-- Better error handling and logging
+Implement automatic LinkedIn access token refresh using refresh tokens, with proactive renewal before expiration. The system will also display token expiration status in the UI and automatically disconnect integrations when refresh tokens expire.
 
-### Gap Analysis
+---
 
-The SMA project **already implements the secure pattern correctly** but lacks some of the polished utilities from the CHATBOT project:
+## LinkedIn Token Lifecycle
 
-1. **Missing shared utilities module** - CHATBOT has helper functions to reduce code duplication across proxy functions
-2. **Response format inconsistency** - Some functions return wrapped objects, others return flat structures
-3. **Error handling patterns** - Could be more consistent
-4. **Decryption fallback logic** - Only `proxy-linkedin-fetch-orgs` has dual-format support (pgcrypto + AES-GCM)
+| Token Type | Lifetime | Renewal Strategy |
+|------------|----------|------------------|
+| Access Token | 60 days | Auto-refresh **7 days before** expiration |
+| Refresh Token | 365 days | Cannot be refreshed - auto-disconnect **7 days before** expiration |
 
-### Implementation Plan
+---
 
-#### Phase 1: Enhance Shared Encryption Module
+## Implementation Components
 
-**File: `supabase/functions/_shared/encryption.ts`**
+### 1. New Edge Function: `proxy-linkedin-refresh-token`
 
-Add new helper functions to the existing encryption utilities:
-- `getDecryptedPlatformCredentials()` - Fetch and decrypt credentials by platform_name + user_id
-- `getPlatformIntegration()` - Fetch integration record with proper error handling
-- Keep existing `encryptCredentials`, `decryptCredentials`, `safeDecryptCredentials` functions
+Create a secure edge function following the existing YouTube refresh pattern:
 
-This reduces code duplication and provides a single source of truth.
+**File:** `supabase/functions/proxy-linkedin-refresh-token/index.ts`
 
-#### Phase 2: Add Dual-Format Decryption Support to All Proxy Functions
+**Functionality:**
+- Accept `user_id` from n8n (no credentials sent from caller)
+- Fetch and decrypt stored LinkedIn credentials from database
+- Extract `refresh_token`, `client_id`, and `client_secret`
+- Call LinkedIn OAuth endpoint with `grant_type=refresh_token`
+- Store new `access_token` with updated `expires_at` timestamp
+- Preserve or update `refresh_token` if LinkedIn issues a new one
+- Store `refresh_token_expires_at` for monitoring
+- Return only success/failure status (no credentials exposed)
 
-**Affected Functions:**
-- `proxy-instagram-fetch-accounts/index.ts`
-- `proxy-youtube-fetch-channel/index.ts`
-- `proxy-facebook-fetch-pages/index.ts`
-- `proxy-facebook-exchange-token/index.ts`
-- `proxy-twitter-fetch-user/index.ts`
-- `proxy-validate-openai/index.ts`
+**LinkedIn Refresh API:**
+```text
+POST https://www.linkedin.com/oauth/v2/accessToken
+Content-Type: application/x-www-form-urlencoded
 
-**Change:**
-Update each function's credential fetching to:
-1. Check if `credentials_encrypted === true` → try RPC-based pgcrypto decryption first
-2. Otherwise → use AES-GCM decryption via `safeDecryptCredentials`
-3. This ensures backward compatibility with legacy pgcrypto-encrypted data
+grant_type=refresh_token
+refresh_token={stored_refresh_token}
+client_id={from_metadata_or_env}
+client_secret={from_metadata_or_env}
+```
 
-Currently only `proxy-linkedin-fetch-orgs` has this dual support.
-
-#### Phase 3: Standardize Response Format
-
-**All proxy functions should follow:**
+**Response Structure:**
 ```json
 {
-  "success": true,
-  "data": { /* actual results */ },
-  "error": null
+  "access_token": "new_access_token",
+  "expires_in": 5184000,
+  "refresh_token": "same_or_new_refresh_token",
+  "refresh_token_expires_in": 31536000
 }
 ```
 
-**For errors:**
+---
+
+### 2. New Edge Function: `check-expiring-tokens`
+
+Create an orchestrator function to identify tokens needing attention:
+
+**File:** `supabase/functions/check-expiring-tokens/index.ts`
+
+**Functionality:**
+- Query all LinkedIn integrations from `platform_integrations`
+- Identify tokens that need attention based on stored `expires_at` and `refresh_token_expires_at`
+- Return list of integrations requiring action with their status
+
+**Return Format:**
 ```json
 {
-  "success": false,
-  "data": null,
-  "error": "error message"
+  "needs_access_refresh": [
+    { "user_id": "...", "platform": "linkedin", "expires_in_days": 5 }
+  ],
+  "needs_disconnect_warning": [
+    { "user_id": "...", "platform": "linkedin", "refresh_expires_in_days": 6 }
+  ],
+  "should_auto_disconnect": [
+    { "user_id": "...", "platform": "linkedin", "reason": "refresh_token_expired" }
+  ]
 }
 ```
 
-Currently functions return responses inconsistently:
-- Some return direct data: `{ pages: [...] }`
-- Some return wrapped: `{ channels: [...] }`
-- Standardizing improves n8n workflow consistency
+---
 
-#### Phase 4: Enhance Error Logging
+### 3. Configuration Update
 
-Add structured logging for debugging:
-- Log which integration was queried (but NOT the decrypted keys)
-- Log API call details (endpoint, method, response status)
-- Include request IDs for tracing
+**File:** `supabase/config.toml`
 
-#### Phase 5: Add Integration Selection Helper
+Add new function configurations:
+```toml
+[functions.proxy-linkedin-refresh-token]
+verify_jwt = false
 
-Since multiple platforms might be stored per user (e.g., Instagram + Facebook), add helper to:
-- Prioritize correct platform selection
-- Handle cases where user might have multiple accounts
-- Return helpful error messages if integration not found
+[functions.check-expiring-tokens]
+verify_jwt = false
+```
 
-### Files to Modify
+---
 
-1. **`supabase/functions/_shared/encryption.ts`** - Add new helper functions
-2. **`supabase/functions/proxy-facebook-fetch-pages/index.ts`** - Add dual-format decryption, standardize response
-3. **`supabase/functions/proxy-instagram-fetch-accounts/index.ts`** - Add dual-format decryption, standardize response
-4. **`supabase/functions/proxy-youtube-fetch-channel/index.ts`** - Add dual-format decryption, standardize response
-5. **`supabase/functions/proxy-youtube-refresh-token/index.ts`** - Standardize response format
-6. **`supabase/functions/proxy-facebook-exchange-token/index.ts`** - Add dual-format decryption, standardize response
-7. **`supabase/functions/proxy-twitter-fetch-user/index.ts`** - Add dual-format decryption, standardize response
-8. **`supabase/functions/proxy-validate-openai/index.ts`** - Add dual-format decryption, standardize response
-9. **`supabase/functions/proxy-linkedin-fetch-orgs/index.ts`** - Already has dual-format, just standardize response
+### 4. Credential Storage Enhancement
 
-### Security Guarantees
+When storing LinkedIn credentials initially (in n8n or store-platform-integration), include expiration timestamps:
 
-✅ **Already in place:**
-- API keys/tokens never transmitted from n8n to proxy functions
-- Credentials fetched from database only
-- AES-256-GCM encryption at rest
-- API keys never exposed in response payloads
-- API Key authentication via `N8N_API_KEY` header
+**Credentials JSON Structure:**
+```json
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "expires_at": "2025-04-09T12:00:00.000Z",
+  "refresh_token_expires_at": "2026-02-08T12:00:00.000Z"
+}
+```
 
-✅ **Will improve:**
-- Consistent error handling prevents accidental credential leakage
-- Dual-format decryption handles migration path from legacy encryption
-- Standardized response format prevents misconfigurations in n8n workflows
+The `expires_at` is calculated as: `current_time + expires_in` seconds
+The `refresh_token_expires_at` is calculated as: `current_time + refresh_token_expires_in` seconds
 
-### Implementation Sequence
+---
 
-1. Update `_shared/encryption.ts` with new helper functions
-2. Update all 8 proxy functions one by one to:
-   - Use new helper functions
-   - Add dual-format decryption support
-   - Standardize response format
-3. Deploy all updated functions
-4. Test each proxy function in n8n workflow to verify:
-   - Only `user_id` sent from n8n
-   - Credentials properly decrypted
-   - Only metadata returned (no tokens)
-   - Error messages are helpful and don't leak data
+### 5. UI Enhancements for Token Expiration Display
 
-### Benefits
+**File:** `src/pages/Accounts.tsx`
 
-1. **Code consistency** - All proxy functions follow identical pattern
-2. **Maintainability** - Changes to encryption logic only in one place
-3. **Backward compatibility** - Supports both pgcrypto and AES-GCM formats
-4. **Security** - Consistent error handling prevents data leaks
-5. **Debugging** - Structured logging makes troubleshooting easier
+**New Features:**
+
+1. **Token Status Badge on Account Cards:**
+   - Green badge: "Token OK" (more than 14 days remaining)
+   - Yellow badge: "Expires in X days" (7-14 days remaining)
+   - Orange badge: "Expires soon" (less than 7 days)
+   - Red badge: "Reconnect required" (expired or refresh token expiring)
+
+2. **Refresh Token Countdown:**
+   - Display "Reconnection required in X months/days" when refresh token is approaching expiration
+   - Show warning alert when less than 30 days remaining
+
+3. **Automatic Disconnect Handling:**
+   - When refresh token has expired or is about to expire (within 7 days), mark the integration for disconnection
+   - Show a prominent alert explaining the user must reconnect
+
+**Visual Implementation:**
+```text
++----------------------------------+
+| LinkedIn Account Card            |
+|                                  |
+| [Avatar] John Doe                |
+| Personal                         |
+|                                  |
+| Token: Expires in 52 days        |
+| Reconnect in: 11 months          |
+|                                  |
+| [Connected indicator]            |
++----------------------------------+
+```
+
+**When refresh token expires soon:**
+```text
++----------------------------------+
+| LinkedIn Account Card            |
+|                                  |
+| [Avatar] John Doe                |
+| Personal                         |
+|                                  |
+| [!] Reconnect in 5 days          |
+|                                  |
+| [Reconnect Now Button]           |
++----------------------------------+
+```
+
+---
+
+### 6. Auto-Disconnect Logic
+
+**When Refresh Token Expires (or is within 7 days of expiring):**
+
+1. The `check-expiring-tokens` function identifies the integration
+2. n8n workflow (or a scheduled check) calls the function
+3. For integrations with expired refresh tokens:
+   - Update status to `expired` in database
+   - UI will show "Expired - Please Reconnect" badge
+   - Alternatively, delete the integration entirely (configurable)
+
+**Implementation Options:**
+- **Soft disconnect:** Set `status = 'expired'` - keeps data but prevents posting
+- **Hard disconnect:** Delete the integration record - requires full re-auth
+
+---
+
+## n8n Workflow Integration
+
+After deployment, configure an n8n workflow to:
+
+1. **Daily Schedule (e.g., 3 AM):**
+   - Call `check-expiring-tokens` to get list of tokens needing attention
+   - For each token needing access refresh: call `proxy-linkedin-refresh-token`
+   - For each token needing disconnect: update integration status or delete
+
+2. **Logic Flow:**
+   ```text
+   Schedule Trigger (Daily)
+       ↓
+   Call check-expiring-tokens
+       ↓
+   ┌─────────────────────────────────┐
+   │ For each "needs_access_refresh" │
+   │ → Call proxy-linkedin-refresh   │
+   └─────────────────────────────────┘
+       ↓
+   ┌─────────────────────────────────┐
+   │ For each "should_auto_disconnect"│
+   │ → Update status to 'expired'    │
+   │   OR delete integration         │
+   └─────────────────────────────────┘
+   ```
+
+---
+
+## Timing Configuration
+
+| Action | Trigger Point |
+|--------|---------------|
+| Access token refresh | 7 days before `expires_at` |
+| Disconnect warning (UI) | 30 days before `refresh_token_expires_at` |
+| Auto-disconnect | 7 days before `refresh_token_expires_at` |
+
+These thresholds can be configured in the edge functions.
+
+---
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `supabase/functions/proxy-linkedin-refresh-token/index.ts` | Create | Handle LinkedIn token refresh |
+| `supabase/functions/check-expiring-tokens/index.ts` | Create | Identify expiring tokens |
+| `supabase/config.toml` | Modify | Add function configurations |
+| `src/pages/Accounts.tsx` | Modify | Display token expiration status and warnings |
+
+---
+
+## Security Guarantees
+
+- All token operations happen server-side via edge functions
+- Access tokens and refresh tokens never leave the backend
+- Only success/failure status returned to callers
+- Client credentials stored in integration metadata (multi-tenant support)
+- Proactive refresh prevents token-related posting failures
+
