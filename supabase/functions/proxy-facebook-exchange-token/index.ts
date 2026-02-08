@@ -1,10 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { safeDecryptCredentials, encryptCredentials } from "../_shared/encryption.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
-};
+import {
+  corsHeaders,
+  jsonResponse,
+  successResponse,
+  errorResponse,
+  validateApiKey,
+  encryptCredentials,
+} from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,23 +14,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = req.headers.get("x-api-key");
-    const expectedKey = Deno.env.get("N8N_API_KEY");
-    
-    if (!apiKey || apiKey !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
+      return jsonResponse(errorResponse(authResult.error!), 401);
     }
 
+    // Parse request
     const { user_id, short_lived_token } = await req.json();
-
+    
     if (!user_id || !short_lived_token) {
-      return new Response(JSON.stringify({ error: "Missing user_id or short_lived_token" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Missing user_id or short_lived_token"), 400);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -36,6 +32,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get Facebook app credentials from metadata or env
+    console.log("[facebook] Fetching app credentials...");
     const { data: integration } = await supabase
       .from("platform_integrations")
       .select("metadata")
@@ -43,27 +40,24 @@ Deno.serve(async (req) => {
       .eq("platform_name", "facebook")
       .maybeSingle();
 
-    const appId = integration?.metadata?.app_id || Deno.env.get("FACEBOOK_APP_ID");
-    const appSecret = integration?.metadata?.app_secret || Deno.env.get("FACEBOOK_APP_SECRET");
+    const metadata = integration?.metadata as Record<string, unknown> | null;
+    const appId = (metadata?.app_id as string) || Deno.env.get("FACEBOOK_APP_ID");
+    const appSecret = (metadata?.app_secret as string) || Deno.env.get("FACEBOOK_APP_SECRET");
 
     if (!appId || !appSecret) {
-      return new Response(JSON.stringify({ error: "Facebook app credentials not configured" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Facebook app credentials not configured"), 400);
     }
 
     // Exchange for long-lived token
+    console.log("[facebook] Exchanging for long-lived token...");
     const exchangeUrl = `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${short_lived_token}`;
     
     const response = await fetch(exchangeUrl);
     const data = await response.json();
 
     if (data.error) {
-      return new Response(JSON.stringify({ error: data.error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("[facebook] Token exchange error:", data.error.message);
+      return jsonResponse(errorResponse(data.error.message), 400);
     }
 
     // Store the token securely in DB - never return it to n8n
@@ -86,26 +80,20 @@ Deno.serve(async (req) => {
       }, { onConflict: "user_id,platform_name" });
 
     if (upsertError) {
-      return new Response(JSON.stringify({ error: "Failed to store credentials" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("[facebook] Failed to store credentials:", upsertError.message);
+      return jsonResponse(errorResponse("Failed to store credentials"), 500);
     }
 
+    console.log("[facebook] Token exchanged and stored successfully");
+
     // Return only success status - NO credentials
-    return new Response(JSON.stringify({ 
-      success: true,
+    return jsonResponse(successResponse({
       message: "Token exchanged and stored securely",
       expires_in: data.expires_in,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    }));
   } catch (error) {
     console.error("Error in proxy-facebook-exchange-token:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(errorResponse(message), 500);
   }
 });

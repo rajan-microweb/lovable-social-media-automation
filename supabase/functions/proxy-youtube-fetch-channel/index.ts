@@ -1,10 +1,12 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { safeDecryptCredentials } from "../_shared/encryption.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
-};
+import {
+  corsHeaders,
+  jsonResponse,
+  successResponse,
+  errorResponse,
+  validateApiKey,
+  createSupabaseClient,
+  getDecryptedPlatformCredentials,
+} from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,56 +14,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = req.headers.get("x-api-key");
-    const expectedKey = Deno.env.get("N8N_API_KEY");
-    
-    if (!apiKey || apiKey !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
+      return jsonResponse(errorResponse(authResult.error!), 401);
     }
 
+    // Parse request
     const { user_id } = await req.json();
-
     if (!user_id) {
-      return new Response(JSON.stringify({ error: "Missing user_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Missing user_id"), 400);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Get decrypted credentials
+    const supabase = createSupabaseClient();
+    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+      supabase,
+      user_id,
+      "youtube"
+    );
 
-    // Get YouTube integration
-    const { data: integration, error: intError } = await supabase
-      .from("platform_integrations")
-      .select("credentials")
-      .eq("user_id", user_id)
-      .eq("platform_name", "youtube")
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (intError || !integration) {
-      return new Response(JSON.stringify({ error: "YouTube integration not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (credError || !credentials) {
+      return jsonResponse(errorResponse(credError || "YouTube integration not found"), 404);
     }
 
-    const credentials = await safeDecryptCredentials(integration.credentials);
     const accessToken = credentials.access_token as string;
-
     if (!accessToken) {
-      return new Response(JSON.stringify({ error: "No access token found" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("No access token found"), 400);
     }
 
     // Fetch channel info
+    console.log("[youtube] Fetching channel info...");
     const response = await fetch(
       `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&mine=true&access_token=${accessToken}`
     );
@@ -69,31 +52,40 @@ Deno.serve(async (req) => {
     const data = await response.json();
 
     if (data.error) {
-      return new Response(JSON.stringify({ error: data.error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("[youtube] API error:", data.error.message);
+      return jsonResponse(errorResponse(data.error.message), 400);
     }
 
-    const channels = (data.items || []).map((channel: any) => ({
+    const channels = (data.items || []).map((channel: {
+      id: string;
+      snippet?: {
+        title?: string;
+        description?: string;
+        thumbnails?: { default?: { url?: string } };
+      };
+      statistics?: {
+        subscriberCount?: string;
+        videoCount?: string;
+      };
+      contentDetails?: {
+        relatedPlaylists?: { uploads?: string };
+      };
+    }) => ({
       channel_id: channel.id,
-      channel_name: channel.snippet?.title,
-      description: channel.snippet?.description,
-      thumbnail_url: channel.snippet?.thumbnails?.default?.url,
-      subscriber_count: channel.statistics?.subscriberCount,
-      video_count: channel.statistics?.videoCount,
-      uploads_playlist_id: channel.contentDetails?.relatedPlaylists?.uploads,
+      channel_name: channel.snippet?.title || null,
+      description: channel.snippet?.description || null,
+      thumbnail_url: channel.snippet?.thumbnails?.default?.url || null,
+      subscriber_count: channel.statistics?.subscriberCount || null,
+      video_count: channel.statistics?.videoCount || null,
+      uploads_playlist_id: channel.contentDetails?.relatedPlaylists?.uploads || null,
     }));
 
-    return new Response(JSON.stringify({ channels }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.log(`[youtube] Found ${channels.length} channels`);
+
+    return jsonResponse(successResponse({ channels }));
   } catch (error) {
     console.error("Error in proxy-youtube-fetch-channel:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(errorResponse(message), 500);
   }
 });

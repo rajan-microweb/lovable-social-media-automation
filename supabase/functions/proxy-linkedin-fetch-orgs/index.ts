@@ -1,10 +1,12 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { safeDecryptCredentials } from "../_shared/encryption.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
-};
+import {
+  corsHeaders,
+  jsonResponse,
+  successResponse,
+  errorResponse,
+  validateApiKey,
+  createSupabaseClient,
+  getDecryptedPlatformCredentials,
+} from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,85 +14,38 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = req.headers.get("x-api-key");
-    const expectedKey = Deno.env.get("N8N_API_KEY");
-    
-    if (!apiKey || apiKey !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
+      return jsonResponse(errorResponse(authResult.error!), 401);
     }
 
+    // Parse request
     const { user_id } = await req.json();
-
     if (!user_id) {
-      return new Response(JSON.stringify({ error: "Missing user_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Missing user_id"), 400);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Get decrypted credentials
+    const supabase = createSupabaseClient();
+    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+      supabase,
+      user_id,
+      "linkedin"
+    );
 
-    // Get LinkedIn integration - check if encrypted
-    const { data: integration, error: intError } = await supabase
-      .from("platform_integrations")
-      .select("credentials, credentials_encrypted")
-      .eq("user_id", user_id)
-      .eq("platform_name", "linkedin")
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (intError || !integration) {
-      return new Response(JSON.stringify({ error: "LinkedIn integration not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    let credentials: Record<string, unknown>;
-
-    // Handle pgcrypto-encrypted credentials (old format)
-    if (integration.credentials_encrypted === true) {
-      // For pgcrypto format, the credentials are stored as a JSON string containing the encrypted value
-      // We need to use the database function to decrypt
-      const encryptedValue = typeof integration.credentials === 'string' 
-        ? integration.credentials 
-        : JSON.stringify(integration.credentials).replace(/^"|"$/g, '');
-      
-      const { data: decryptedData, error: decryptError } = await supabase.rpc(
-        'decrypt_credentials',
-        { encrypted_creds: encryptedValue }
-      );
-      
-      if (decryptError || !decryptedData) {
-        console.error("Decryption error:", decryptError);
-        return new Response(JSON.stringify({ error: "Failed to decrypt credentials" }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      
-      credentials = typeof decryptedData === 'string' ? JSON.parse(decryptedData) : decryptedData;
-    } else {
-      // Use the new AES-GCM decryption or plain JSON
-      credentials = await safeDecryptCredentials(integration.credentials);
+    if (credError || !credentials) {
+      return jsonResponse(errorResponse(credError || "LinkedIn integration not found"), 404);
     }
 
     const accessToken = credentials.access_token as string;
-
     if (!accessToken) {
       console.error("No access_token in credentials. Keys available:", Object.keys(credentials));
-      return new Response(JSON.stringify({ error: "No access token found" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("No access token found"), 400);
     }
 
     // Fetch user profile
+    console.log("[linkedin] Fetching user profile...");
     const profileRes = await fetch("https://api.linkedin.com/v2/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -104,9 +59,13 @@ Deno.serve(async (req) => {
         email: profile.email,
         picture: profile.picture,
       };
+      console.log("[linkedin] Profile fetched:", personalInfo.name);
+    } else {
+      console.warn("[linkedin] Profile fetch failed:", profileRes.status);
     }
 
     // Fetch organizations
+    console.log("[linkedin] Fetching organizations...");
     const orgsRes = await fetch(
       "https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&projection=(elements*(organization~(id,localizedName,logoV2(original~:playableStreams))))",
       {
@@ -117,7 +76,12 @@ Deno.serve(async (req) => {
       }
     );
 
-    const organizations: any[] = [];
+    const organizations: Array<{
+      company_id: string;
+      company_name: string;
+      logo_url: string | null;
+    }> = [];
+    
     if (orgsRes.ok) {
       const orgsData = await orgsRes.json();
       for (const element of orgsData.elements || []) {
@@ -126,24 +90,22 @@ Deno.serve(async (req) => {
           organizations.push({
             company_id: org.id,
             company_name: org.localizedName,
-            logo_url: org.logoV2?.["original~"]?.elements?.[0]?.identifiers?.[0]?.identifier,
+            logo_url: org.logoV2?.["original~"]?.elements?.[0]?.identifiers?.[0]?.identifier || null,
           });
         }
       }
+      console.log(`[linkedin] Found ${organizations.length} organizations`);
+    } else {
+      console.warn("[linkedin] Organizations fetch failed:", orgsRes.status);
     }
 
-    return new Response(JSON.stringify({ 
-      personal_info: personalInfo, 
-      organizations 
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(successResponse({
+      personal_info: personalInfo,
+      organizations,
+    }));
   } catch (error) {
     console.error("Error in proxy-linkedin-fetch-orgs:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(errorResponse(message), 500);
   }
 });
