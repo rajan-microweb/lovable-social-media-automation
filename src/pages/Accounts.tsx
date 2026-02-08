@@ -30,6 +30,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { PlatformConnectDialog } from "@/components/PlatformConnectDialog";
+import { TokenExpirationBadge } from "@/components/accounts/TokenExpirationBadge";
+import { calculateTokenExpiration, TokenExpirationInfo } from "@/hooks/useTokenExpiration";
 
 interface ConnectedAccount {
   id: string;
@@ -40,6 +42,7 @@ interface ConnectedAccount {
   avatarUrl: string | null;
   platformIcon: React.ComponentType<{ className?: string }>;
   platformColor: string;
+  tokenExpiration?: TokenExpirationInfo;
 }
 
 interface PlatformConfig {
@@ -232,6 +235,13 @@ export default function Accounts() {
 
         // --- HANDLE LINKEDIN (from metadata) ---
         if (platformName === "linkedin" && metadata) {
+          // Calculate token expiration from metadata (if available)
+          // Note: expires_at and refresh_token_expires_at should be stored in metadata
+          const tokenExpiration = calculateTokenExpiration({
+            expires_at: metadata.expires_at || metadata.access_token_expires_at,
+            refresh_token_expires_at: metadata.refresh_token_expires_at,
+          });
+
           // Personal info from metadata
           if (metadata.personal_info) {
             accounts.push({
@@ -243,6 +253,7 @@ export default function Accounts() {
               avatarUrl: metadata.personal_info.picture || metadata.personal_info.avatar_url || null,
               platformIcon: config.icon,
               platformColor: config.color,
+              tokenExpiration,
             });
           }
           // Organizations from metadata (proxy function format)
@@ -257,6 +268,7 @@ export default function Accounts() {
                 avatarUrl: org.logo_url || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
+                tokenExpiration,
               });
             });
           }
@@ -272,6 +284,7 @@ export default function Accounts() {
                 avatarUrl: company.company_logo || company.logo_url || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
+                tokenExpiration,
               });
             });
           }
@@ -936,11 +949,23 @@ export default function Accounts() {
                               </div>
                             </div>
                           </CardHeader>
-                          <CardContent>
+                          <CardContent className="space-y-2">
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span className="h-2 w-2 rounded-full bg-green-500" />
-                              Connected
+                              <span className={`h-2 w-2 rounded-full ${
+                                account.tokenExpiration?.needsReconnect 
+                                  ? "bg-destructive" 
+                                  : "bg-green-500"
+                              }`} />
+                              {account.tokenExpiration?.needsReconnect ? "Reconnect Required" : "Connected"}
                             </div>
+                            {/* Show token expiration for LinkedIn */}
+                            {account.platform === "LinkedIn" && account.tokenExpiration && (
+                              <TokenExpirationBadge 
+                                expirationInfo={account.tokenExpiration}
+                                showAccessToken={true}
+                                showRefreshToken={true}
+                              />
+                            )}
                           </CardContent>
                         </Card>
                       );
