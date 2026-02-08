@@ -7,7 +7,6 @@ import {
   createSupabaseClient,
   getDecryptedPlatformCredentials,
   updatePlatformCredentials,
-  updatePlatformMetadata,
 } from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
@@ -102,15 +101,6 @@ Deno.serve(async (req) => {
     };
 
     await updatePlatformCredentials(supabase, integration.id, updatedCredentials);
-
-    // Store account details (non-sensitive) in metadata column
-    const metadata = {
-      accounts,
-      last_synced: new Date().toISOString(),
-    };
-    
-    await updatePlatformMetadata(supabase, integration.id, metadata);
-    console.log("[instagram] Metadata updated with account details");
 
     return jsonResponse(successResponse({ accounts }));
   } catch (error) {

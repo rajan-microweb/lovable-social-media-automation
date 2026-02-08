@@ -6,7 +6,6 @@ import {
   validateApiKey,
   createSupabaseClient,
   getDecryptedPlatformCredentials,
-  updatePlatformMetadata,
 } from "../_shared/encryption.ts";
 
 // ============= OAuth 1.0a Signature Generation =============
@@ -209,15 +208,6 @@ Deno.serve(async (req) => {
       description: twitterData.data?.description || null,
       public_metrics: twitterData.data?.public_metrics || null,
     };
-
-    // Store user details in metadata column
-    const metadata = {
-      user: userData,
-      last_synced: new Date().toISOString(),
-    };
-    
-    await updatePlatformMetadata(supabase, integration.id, metadata);
-    console.log("[twitter] Metadata updated with user details");
 
     // Return sanitized user data (no tokens)
     return jsonResponse(successResponse({ user: userData }));
