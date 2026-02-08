@@ -452,13 +452,21 @@ export default function Accounts() {
 
         if (exchangeError) {
           console.error("Token exchange error:", exchangeError);
-          toast.error(`Token exchange failed: ${exchangeError.message}`);
+          const errorMsg = exchangeError instanceof Error 
+            ? exchangeError.message 
+            : typeof exchangeError === 'string' 
+              ? exchangeError 
+              : JSON.stringify(exchangeError);
+          toast.error(`Token exchange failed: ${errorMsg}`);
           return;
         }
 
-        if (exchangeData.error) {
+        if (exchangeData?.error) {
           console.error("Token exchange error:", exchangeData.error);
-          toast.error(`Token exchange failed: ${exchangeData.error}`);
+          const errorMsg = typeof exchangeData.error === 'string' 
+            ? exchangeData.error 
+            : exchangeData.error.message || JSON.stringify(exchangeData.error);
+          toast.error(`Token exchange failed: ${errorMsg}`);
           return;
         }
 
@@ -477,7 +485,12 @@ export default function Accounts() {
         toast.success("Long-lived token obtained successfully!");
       } catch (exchangeError) {
         console.error("Token exchange error:", exchangeError);
-        toast.error("Failed to exchange token. Please check your credentials.");
+        const errorMsg = exchangeError instanceof Error 
+          ? exchangeError.message 
+          : typeof exchangeError === 'string' 
+            ? exchangeError 
+            : JSON.stringify(exchangeError);
+        toast.error(`Token exchange failed: ${errorMsg}`);
         return;
       }
     }
