@@ -6,7 +6,6 @@ import {
   validateApiKey,
   createSupabaseClient,
   getDecryptedPlatformCredentials,
-  updatePlatformMetadata,
 } from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
@@ -100,16 +99,6 @@ Deno.serve(async (req) => {
     } else {
       console.warn("[linkedin] Organizations fetch failed:", orgsRes.status);
     }
-
-    // Store account details in metadata column
-    const metadata = {
-      personal_info: personalInfo,
-      organizations,
-      last_synced: new Date().toISOString(),
-    };
-    
-    await updatePlatformMetadata(supabase, integration.id, metadata);
-    console.log("[linkedin] Metadata updated with account details");
 
     return jsonResponse(successResponse({
       personal_info: personalInfo,
