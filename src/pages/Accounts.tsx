@@ -502,6 +502,9 @@ export default function Accounts() {
 
       // Step 2: Only after successful storage, notify n8n webhook
       // SECURITY: Only send user_id, integration_id, and platform_name - NO credentials
+      const isTokenExchanged = (platformKey === "facebook" || platformKey === "instagram") && 
+        fields.accessToken && fields.appId && fields.appSecret;
+      
       try {
         const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials", {
           method: "POST",
@@ -512,6 +515,7 @@ export default function Accounts() {
             platform_name: platformKey,
             user_id: user.id,
             integration_id: integrationData?.id,
+            token_exchanged: isTokenExchanged, // Indicates long-lived token was obtained
           }),
         });
 
