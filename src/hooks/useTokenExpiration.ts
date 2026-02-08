@@ -5,9 +5,10 @@ export interface TokenExpirationInfo {
   refreshTokenExpiresAt: string | null;
   accessTokenDaysRemaining: number | null;
   refreshTokenDaysRemaining: number | null;
-  accessTokenStatus: "ok" | "warning" | "expiring" | "expired";
-  refreshTokenStatus: "ok" | "warning" | "expiring" | "expired";
+  accessTokenStatus: "ok" | "warning" | "expiring" | "expired" | "unknown";
+  refreshTokenStatus: "ok" | "warning" | "expiring" | "expired" | "unknown";
   needsReconnect: boolean;
+  hasExpirationData: boolean;
   displayText: {
     accessToken: string | null;
     refreshToken: string | null;
@@ -15,54 +16,73 @@ export interface TokenExpirationInfo {
 }
 
 /**
- * Calculates token expiration status from credentials
+ * Calculates token expiration status from credentials/metadata
  */
-export function calculateTokenExpiration(credentials: Record<string, unknown> | null): TokenExpirationInfo {
+export function calculateTokenExpiration(data: Record<string, unknown> | null): TokenExpirationInfo {
   const now = new Date();
   
-  // Extract expiration timestamps (support both formats)
-  const accessTokenExpiresAt = (credentials?.expires_at || credentials?.expiresAt) as string | null;
-  const refreshTokenExpiresAt = (credentials?.refresh_token_expires_at || credentials?.refreshTokenExpiresAt) as string | null;
+  // Extract expiration timestamps (support multiple formats)
+  const accessTokenExpiresAt = (
+    data?.expires_at || 
+    data?.expiresAt || 
+    data?.access_token_expires_at
+  ) as string | null;
+  
+  const refreshTokenExpiresAt = (
+    data?.refresh_token_expires_at || 
+    data?.refreshTokenExpiresAt
+  ) as string | null;
 
   let accessTokenDaysRemaining: number | null = null;
   let refreshTokenDaysRemaining: number | null = null;
-  let accessTokenStatus: TokenExpirationInfo["accessTokenStatus"] = "ok";
-  let refreshTokenStatus: TokenExpirationInfo["refreshTokenStatus"] = "ok";
+  let accessTokenStatus: TokenExpirationInfo["accessTokenStatus"] = "unknown";
+  let refreshTokenStatus: TokenExpirationInfo["refreshTokenStatus"] = "unknown";
 
   // Calculate access token days remaining
   if (accessTokenExpiresAt) {
     const expiresDate = new Date(accessTokenExpiresAt);
-    accessTokenDaysRemaining = Math.floor((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (accessTokenDaysRemaining <= 0) {
-      accessTokenStatus = "expired";
-    } else if (accessTokenDaysRemaining <= 7) {
-      accessTokenStatus = "expiring";
-    } else if (accessTokenDaysRemaining <= 14) {
-      accessTokenStatus = "warning";
+    if (!isNaN(expiresDate.getTime())) {
+      accessTokenDaysRemaining = Math.floor((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (accessTokenDaysRemaining <= 0) {
+        accessTokenStatus = "expired";
+      } else if (accessTokenDaysRemaining <= 7) {
+        accessTokenStatus = "expiring";
+      } else if (accessTokenDaysRemaining <= 14) {
+        accessTokenStatus = "warning";
+      } else {
+        accessTokenStatus = "ok";
+      }
     }
   }
 
   // Calculate refresh token days remaining
   if (refreshTokenExpiresAt) {
     const expiresDate = new Date(refreshTokenExpiresAt);
-    refreshTokenDaysRemaining = Math.floor((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (refreshTokenDaysRemaining <= 0) {
-      refreshTokenStatus = "expired";
-    } else if (refreshTokenDaysRemaining <= 7) {
-      refreshTokenStatus = "expiring";
-    } else if (refreshTokenDaysRemaining <= 30) {
-      refreshTokenStatus = "warning";
+    if (!isNaN(expiresDate.getTime())) {
+      refreshTokenDaysRemaining = Math.floor((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (refreshTokenDaysRemaining <= 0) {
+        refreshTokenStatus = "expired";
+      } else if (refreshTokenDaysRemaining <= 7) {
+        refreshTokenStatus = "expiring";
+      } else if (refreshTokenDaysRemaining <= 30) {
+        refreshTokenStatus = "warning";
+      } else {
+        refreshTokenStatus = "ok";
+      }
     }
   }
 
   // Needs reconnect if refresh token is expiring/expired
   const needsReconnect = refreshTokenStatus === "expired" || refreshTokenStatus === "expiring";
+  
+  // Check if we have any expiration data
+  const hasExpirationData = accessTokenExpiresAt !== null || refreshTokenExpiresAt !== null;
 
   // Generate display text
   const displayText = {
-    accessToken: formatTimeRemaining(accessTokenDaysRemaining, "Token"),
+    accessToken: formatTimeRemaining(accessTokenDaysRemaining, "Token expires in"),
     refreshToken: formatTimeRemaining(refreshTokenDaysRemaining, "Reconnect in"),
   };
 
@@ -74,6 +94,7 @@ export function calculateTokenExpiration(credentials: Record<string, unknown> | 
     accessTokenStatus,
     refreshTokenStatus,
     needsReconnect,
+    hasExpirationData,
     displayText,
   };
 }
@@ -87,27 +108,31 @@ function formatTimeRemaining(days: number | null, prefix: string): string | null
   if (days <= 0) {
     return "Expired";
   } else if (days === 1) {
-    return `${prefix}: 1 day`;
+    return `${prefix} 1 day`;
   } else if (days < 30) {
-    return `${prefix}: ${days} days`;
+    return `${prefix} ${days} days`;
   } else if (days < 365) {
     const months = Math.floor(days / 30);
-    return `${prefix}: ${months} month${months > 1 ? "s" : ""}`;
+    const remainingDays = days % 30;
+    if (remainingDays > 0 && months < 3) {
+      return `${prefix} ${months}mo ${remainingDays}d`;
+    }
+    return `${prefix} ${months} month${months > 1 ? "s" : ""}`;
   } else {
     const years = Math.floor(days / 365);
     const remainingMonths = Math.floor((days % 365) / 30);
     if (remainingMonths > 0) {
-      return `${prefix}: ${years}y ${remainingMonths}m`;
+      return `${prefix} ${years}y ${remainingMonths}mo`;
     }
-    return `${prefix}: ${years} year${years > 1 ? "s" : ""}`;
+    return `${prefix} ${years} year${years > 1 ? "s" : ""}`;
   }
 }
 
 /**
  * Hook to get token expiration info with memoization
  */
-export function useTokenExpiration(credentials: Record<string, unknown> | null): TokenExpirationInfo {
-  return useMemo(() => calculateTokenExpiration(credentials), [credentials]);
+export function useTokenExpiration(data: Record<string, unknown> | null): TokenExpirationInfo {
+  return useMemo(() => calculateTokenExpiration(data), [data]);
 }
 
 /**
@@ -123,8 +148,10 @@ export function getTokenStatusBadgeVariant(
     case "warning":
       return "secondary";
     case "ok":
-    default:
       return "outline";
+    case "unknown":
+    default:
+      return "default";
   }
 }
 
@@ -142,7 +169,9 @@ export function getTokenStatusColor(
     case "warning":
       return "text-yellow-600";
     case "ok":
-    default:
       return "text-green-600";
+    case "unknown":
+    default:
+      return "text-muted-foreground";
   }
 }
