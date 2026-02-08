@@ -1,10 +1,12 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { safeDecryptCredentials } from "../_shared/encryption.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
-};
+import {
+  corsHeaders,
+  jsonResponse,
+  successResponse,
+  errorResponse,
+  validateApiKey,
+  createSupabaseClient,
+  getDecryptedPlatformCredentials,
+} from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,56 +14,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = req.headers.get("x-api-key");
-    const expectedKey = Deno.env.get("N8N_API_KEY");
-    
-    if (!apiKey || apiKey !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
+      return jsonResponse(errorResponse(authResult.error!), 401);
     }
 
+    // Parse request
     const { user_id } = await req.json();
-
     if (!user_id) {
-      return new Response(JSON.stringify({ error: "Missing user_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Missing user_id"), 400);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Get decrypted credentials
+    const supabase = createSupabaseClient();
+    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+      supabase,
+      user_id,
+      "instagram"
+    );
 
-    // Get Instagram integration (which uses Facebook token)
-    const { data: integration, error: intError } = await supabase
-      .from("platform_integrations")
-      .select("credentials")
-      .eq("user_id", user_id)
-      .eq("platform_name", "instagram")
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (intError || !integration) {
-      return new Response(JSON.stringify({ error: "Instagram integration not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (credError || !credentials) {
+      return jsonResponse(errorResponse(credError || "Instagram integration not found"), 404);
     }
 
-    const credentials = await safeDecryptCredentials(integration.credentials);
     const accessToken = credentials.access_token as string;
-
     if (!accessToken) {
-      return new Response(JSON.stringify({ error: "No access token found" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("No access token found"), 400);
     }
 
     // Fetch Facebook pages first
+    console.log("[instagram] Fetching Facebook pages...");
     const pagesResponse = await fetch(
       `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token&access_token=${accessToken}`
     );
@@ -69,15 +52,21 @@ Deno.serve(async (req) => {
     const pagesData = await pagesResponse.json();
 
     if (pagesData.error) {
-      return new Response(JSON.stringify({ error: pagesData.error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("[instagram] Facebook API error:", pagesData.error.message);
+      return jsonResponse(errorResponse(pagesData.error.message), 400);
     }
 
     // For each page, get linked Instagram business account
-    const accounts: any[] = [];
+    const accounts: Array<{
+      ig_business_id: string;
+      ig_username: string;
+      profile_picture_url: string | null;
+      connected_page_id: string;
+      connected_page_name: string;
+    }> = [];
+
     for (const page of pagesData.data || []) {
+      console.log(`[instagram] Checking page: ${page.name}`);
       const igResponse = await fetch(
         `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{id,username,profile_picture_url}&access_token=${page.access_token}`
       );
@@ -88,22 +77,19 @@ Deno.serve(async (req) => {
         accounts.push({
           ig_business_id: igData.instagram_business_account.id,
           ig_username: igData.instagram_business_account.username,
-          profile_picture_url: igData.instagram_business_account.profile_picture_url,
+          profile_picture_url: igData.instagram_business_account.profile_picture_url || null,
           connected_page_id: page.id,
           connected_page_name: page.name,
         });
       }
     }
 
-    return new Response(JSON.stringify({ accounts }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.log(`[instagram] Found ${accounts.length} Instagram business accounts`);
+
+    return jsonResponse(successResponse({ accounts }));
   } catch (error) {
     console.error("Error in proxy-instagram-fetch-accounts:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(errorResponse(message), 500);
   }
 });

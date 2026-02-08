@@ -1,10 +1,13 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { safeDecryptCredentials, encryptCredentials } from "../_shared/encryption.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
-};
+import {
+  corsHeaders,
+  jsonResponse,
+  successResponse,
+  errorResponse,
+  validateApiKey,
+  createSupabaseClient,
+  getDecryptedPlatformCredentials,
+  updatePlatformCredentials,
+} from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,67 +15,46 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = req.headers.get("x-api-key");
-    const expectedKey = Deno.env.get("N8N_API_KEY");
-    
-    if (!apiKey || apiKey !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
+      return jsonResponse(errorResponse(authResult.error!), 401);
     }
 
+    // Parse request
     const { user_id } = await req.json();
-
     if (!user_id) {
-      return new Response(JSON.stringify({ error: "Missing user_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Missing user_id"), 400);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Get decrypted credentials
+    const supabase = createSupabaseClient();
+    const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
+      supabase,
+      user_id,
+      "youtube"
+    );
 
-    // Get YouTube integration
-    const { data: integration, error: intError } = await supabase
-      .from("platform_integrations")
-      .select("id, credentials, metadata")
-      .eq("user_id", user_id)
-      .eq("platform_name", "youtube")
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (intError || !integration) {
-      return new Response(JSON.stringify({ error: "YouTube integration not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (credError || !credentials || !integration) {
+      return jsonResponse(errorResponse(credError || "YouTube integration not found"), 404);
     }
 
-    const credentials = await safeDecryptCredentials(integration.credentials);
     const refreshToken = credentials.refresh_token as string;
-
     if (!refreshToken) {
-      return new Response(JSON.stringify({ error: "No refresh token found" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("No refresh token found"), 400);
     }
 
-    // Get OAuth client credentials
-    const clientId = integration.metadata?.client_id || Deno.env.get("GOOGLE_CLIENT_ID");
-    const clientSecret = integration.metadata?.client_secret || Deno.env.get("GOOGLE_CLIENT_SECRET");
+    // Get OAuth client credentials from metadata or env
+    const metadata = integration.metadata as Record<string, unknown> | null;
+    const clientId = (metadata?.client_id as string) || Deno.env.get("GOOGLE_CLIENT_ID");
+    const clientSecret = (metadata?.client_secret as string) || Deno.env.get("GOOGLE_CLIENT_SECRET");
 
     if (!clientId || !clientSecret) {
-      return new Response(JSON.stringify({ error: "Google OAuth credentials not configured" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Google OAuth credentials not configured"), 400);
     }
 
     // Refresh the token
+    console.log("[youtube] Refreshing access token...");
     const response = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -87,10 +69,8 @@ Deno.serve(async (req) => {
     const data = await response.json();
 
     if (data.error) {
-      return new Response(JSON.stringify({ error: data.error_description || data.error }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("[youtube] Token refresh error:", data.error_description || data.error);
+      return jsonResponse(errorResponse(data.error_description || data.error), 400);
     }
 
     // Update credentials with new access token
@@ -100,31 +80,22 @@ Deno.serve(async (req) => {
       expires_at: Date.now() + (data.expires_in * 1000),
     };
 
-    const encryptedCredentials = await encryptCredentials(JSON.stringify(updatedCredentials));
+    const updateResult = await updatePlatformCredentials(supabase, integration.id, updatedCredentials);
+    
+    if (!updateResult.success) {
+      return jsonResponse(errorResponse("Failed to store refreshed token"), 500);
+    }
 
-    await supabase
-      .from("platform_integrations")
-      .update({ 
-        credentials: encryptedCredentials,
-        credentials_encrypted: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", integration.id);
+    console.log("[youtube] Token refreshed successfully");
 
     // Return only success status - NO credentials
-    return new Response(JSON.stringify({ 
-      success: true,
+    return jsonResponse(successResponse({
       message: "Token refreshed and stored securely",
       expires_in: data.expires_in,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    }));
   } catch (error) {
     console.error("Error in proxy-youtube-refresh-token:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(errorResponse(message), 500);
   }
 });

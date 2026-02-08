@@ -1,10 +1,13 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { safeDecryptCredentials } from "../_shared/encryption.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
-};
+import {
+  corsHeaders,
+  jsonResponse,
+  successResponse,
+  errorResponse,
+  validateApiKey,
+  createSupabaseClient,
+  getDecryptedPlatformCredentials,
+  updatePlatformCredentials,
+} from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,56 +15,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = req.headers.get("x-api-key");
-    const expectedKey = Deno.env.get("N8N_API_KEY");
-    
-    if (!apiKey || apiKey !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
+      return jsonResponse(errorResponse(authResult.error!), 401);
     }
 
+    // Parse request
     const { user_id } = await req.json();
-
     if (!user_id) {
-      return new Response(JSON.stringify({ error: "Missing user_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("Missing user_id"), 400);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Get decrypted credentials
+    const supabase = createSupabaseClient();
+    const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
+      supabase,
+      user_id,
+      "facebook"
+    );
 
-    // Get Facebook integration
-    const { data: integration, error: intError } = await supabase
-      .from("platform_integrations")
-      .select("credentials")
-      .eq("user_id", user_id)
-      .eq("platform_name", "facebook")
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (intError || !integration) {
-      return new Response(JSON.stringify({ error: "Facebook integration not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (credError || !credentials || !integration) {
+      return jsonResponse(errorResponse(credError || "Facebook integration not found"), 404);
     }
 
-    const credentials = await safeDecryptCredentials(integration.credentials);
     const accessToken = credentials.access_token as string;
-
     if (!accessToken) {
-      return new Response(JSON.stringify({ error: "No access token found" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(errorResponse("No access token found"), 400);
     }
 
     // Fetch pages
+    console.log("[facebook] Fetching pages...");
     const response = await fetch(
       `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,picture{url}&access_token=${accessToken}`
     );
@@ -69,23 +53,23 @@ Deno.serve(async (req) => {
     const data = await response.json();
 
     if (data.error) {
-      return new Response(JSON.stringify({ error: data.error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("[facebook] API error:", data.error.message);
+      return jsonResponse(errorResponse(data.error.message), 400);
     }
 
     // Store page tokens securely - map tokens by page_id
     const pageTokens: Record<string, string> = {};
-    const pages = (data.data || []).map((page: any) => {
+    const pages = (data.data || []).map((page: { id: string; name: string; access_token: string; picture?: { data?: { url?: string } } }) => {
       pageTokens[page.id] = page.access_token;
       // Return only non-sensitive data
       return {
         page_id: page.id,
         page_name: page.name,
-        picture_url: page.picture?.data?.url,
+        picture_url: page.picture?.data?.url || null,
       };
     });
+
+    console.log(`[facebook] Found ${pages.length} pages`);
 
     // Update credentials with page tokens stored securely
     const updatedCredentials = {
@@ -93,29 +77,13 @@ Deno.serve(async (req) => {
       page_tokens: pageTokens,
     };
 
-    const { encryptCredentials } = await import("../_shared/encryption.ts");
-    const encryptedCredentials = await encryptCredentials(JSON.stringify(updatedCredentials));
-
-    await supabase
-      .from("platform_integrations")
-      .update({
-        credentials: encryptedCredentials,
-        credentials_encrypted: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", user_id)
-      .eq("platform_name", "facebook");
+    await updatePlatformCredentials(supabase, integration.id, updatedCredentials);
 
     // Return only non-sensitive page info - NO tokens
-    return new Response(JSON.stringify({ pages }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(successResponse({ pages }));
   } catch (error) {
     console.error("Error in proxy-facebook-fetch-pages:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(errorResponse(message), 500);
   }
 });

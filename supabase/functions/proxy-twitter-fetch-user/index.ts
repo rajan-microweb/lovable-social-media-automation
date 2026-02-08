@@ -1,12 +1,15 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { safeDecryptCredentials } from '../_shared/encryption.ts';
+import {
+  corsHeaders,
+  jsonResponse,
+  successResponse,
+  errorResponse,
+  validateApiKey,
+  createSupabaseClient,
+  getDecryptedPlatformCredentials,
+} from "../_shared/encryption.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-};
+// ============= OAuth 1.0a Signature Generation =============
 
-// OAuth 1.0a signature generation
 function generateNonce(): string {
   return crypto.randomUUID().replace(/-/g, '');
 }
@@ -67,7 +70,8 @@ function generateOAuthHeader(params: Record<string, string>): string {
     .join(', ');
 }
 
-// Rate limiting
+// ============= Rate Limiting =============
+
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_MAX = 100;
 const RATE_LIMIT_WINDOW_MS = 60000;
@@ -89,64 +93,44 @@ function checkRateLimit(clientId: string): boolean {
   return true;
 }
 
+// ============= Main Handler =============
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // API Key authentication
-    const apiKey = req.headers.get('x-api-key');
-    const expectedApiKey = Deno.env.get('N8N_API_KEY');
-
-    if (!apiKey || apiKey !== expectedApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
+      return jsonResponse(errorResponse(authResult.error!), 401);
     }
 
     // Rate limiting
     const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
     if (!checkRateLimit(clientIp)) {
-      return new Response(
-        JSON.stringify({ error: 'Rate limit exceeded' }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(errorResponse("Rate limit exceeded"), 429);
     }
 
+    // Parse request
     const { user_id } = await req.json();
-
     if (!user_id) {
-      return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(errorResponse("user_id is required"), 400);
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Get decrypted credentials
+    const supabase = createSupabaseClient();
+    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+      supabase,
+      user_id,
+      "twitter"
+    );
 
-    // Fetch Twitter integration
-    const { data: integration, error: fetchError } = await supabase
-      .from('platform_integrations')
-      .select('credentials')
-      .eq('user_id', user_id)
-      .eq('platform_name', 'twitter')
-      .eq('status', 'active')
-      .single();
-
-    if (fetchError || !integration) {
-      return new Response(
-        JSON.stringify({ error: 'Twitter integration not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (credError || !credentials) {
+      return jsonResponse(errorResponse(credError || "Twitter integration not found"), 404);
     }
 
-    // Decrypt credentials
-    const credentials = await safeDecryptCredentials(integration.credentials);
     const {
       consumer_key,
       consumer_secret,
@@ -160,10 +144,7 @@ Deno.serve(async (req) => {
     };
 
     if (!consumer_key || !consumer_secret || !access_token || !access_token_secret) {
-      return new Response(
-        JSON.stringify({ error: 'Missing Twitter OAuth credentials' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(errorResponse("Missing Twitter OAuth credentials"), 400);
     }
 
     // Prepare OAuth 1.0a parameters
@@ -182,6 +163,7 @@ Deno.serve(async (req) => {
     };
 
     // Generate signature
+    console.log("[twitter] Generating OAuth signature...");
     const signature = await generateOAuthSignature(
       method,
       apiUrl,
@@ -196,6 +178,7 @@ Deno.serve(async (req) => {
     const authHeader = generateOAuthHeader(oauthParams);
 
     // Call Twitter API
+    console.log("[twitter] Fetching user info...");
     const twitterResponse = await fetch(
       `${apiUrl}?user.fields=id,name,username,profile_image_url,description,public_metrics`,
       {
@@ -208,36 +191,28 @@ Deno.serve(async (req) => {
 
     if (!twitterResponse.ok) {
       const errorText = await twitterResponse.text();
-      console.error('Twitter API error:', errorText);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch Twitter user', details: errorText }),
-        { status: twitterResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error('[twitter] API error:', errorText);
+      return jsonResponse(errorResponse(`Failed to fetch Twitter user: ${twitterResponse.status}`), twitterResponse.status);
     }
 
     const twitterData = await twitterResponse.json();
 
-    // Return sanitized user data (no tokens)
-    return new Response(
-      JSON.stringify({
-        success: true,
-        user: {
-          id: twitterData.data?.id,
-          username: twitterData.data?.username,
-          name: twitterData.data?.name,
-          profile_image_url: twitterData.data?.profile_image_url,
-          description: twitterData.data?.description,
-          public_metrics: twitterData.data?.public_metrics
-        }
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.log("[twitter] User fetched:", twitterData.data?.username);
 
+    // Return sanitized user data (no tokens)
+    return jsonResponse(successResponse({
+      user: {
+        id: twitterData.data?.id || null,
+        username: twitterData.data?.username || null,
+        name: twitterData.data?.name || null,
+        profile_image_url: twitterData.data?.profile_image_url || null,
+        description: twitterData.data?.description || null,
+        public_metrics: twitterData.data?.public_metrics || null,
+      }
+    }));
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error('Error in proxy-twitter-fetch-user:', error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return jsonResponse(errorResponse(message), 500);
   }
 });
