@@ -84,5 +84,11 @@ verify_jwt = false
 [functions.proxy-youtube-fetch-channel]
 verify_jwt = false
 
+[functions.proxy-linkedin-refresh-token]
+verify_jwt = false
+
+[functions.check-expiring-tokens]
+verify_jwt = false
+
 [functions.proxy-twitter-fetch-user]
 verify_jwt = false
