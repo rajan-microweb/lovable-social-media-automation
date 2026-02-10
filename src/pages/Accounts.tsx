@@ -369,9 +369,7 @@ export default function Accounts() {
           // Only show a generic "connected" card if credentials exist
           if (credentials && Object.keys(credentials).length > 0) {
             // Check if we already added accounts for this platform
-            const hasAccountsForPlatform = accounts.some(
-              (acc) => acc.platform.toLowerCase() === platformName
-            );
+            const hasAccountsForPlatform = accounts.some((acc) => acc.platform.toLowerCase() === platformName);
             if (!hasAccountsForPlatform) {
               accounts.push({
                 id: `${platformName}-${integration.id}`,
@@ -447,38 +445,42 @@ export default function Accounts() {
     let metadataToStore: Record<string, any> = {};
 
     // For Facebook/Instagram: Exchange short-lived token for long-lived token via edge function
-    if ((platformKey === "facebook" || platformKey === "instagram") && fields.accessToken && fields.appId && fields.appSecret) {
+    if (
+      (platformKey === "facebook" || platformKey === "instagram") &&
+      fields.accessToken &&
+      fields.appId &&
+      fields.appSecret
+    ) {
       toast.info("Exchanging for long-lived token...");
-      
+
       try {
         // Use edge function to avoid CORS issues with Facebook Graph API
-        const { data: exchangeData, error: exchangeError } = await supabase.functions.invoke(
-          "exchange-meta-token",
-          {
-            body: {
-              accessToken: fields.accessToken,
-              appId: fields.appId,
-              appSecret: fields.appSecret,
-            },
-          }
-        );
+        const { data: exchangeData, error: exchangeError } = await supabase.functions.invoke("exchange-meta-token", {
+          body: {
+            accessToken: fields.accessToken,
+            appId: fields.appId,
+            appSecret: fields.appSecret,
+          },
+        });
 
         if (exchangeError) {
           console.error("Token exchange error:", exchangeError);
-          const errorMsg = exchangeError instanceof Error 
-            ? exchangeError.message 
-            : typeof exchangeError === 'string' 
-              ? exchangeError 
-              : JSON.stringify(exchangeError);
+          const errorMsg =
+            exchangeError instanceof Error
+              ? exchangeError.message
+              : typeof exchangeError === "string"
+                ? exchangeError
+                : JSON.stringify(exchangeError);
           toast.error(`Token exchange failed: ${errorMsg}`);
           return;
         }
 
         if (exchangeData?.error) {
           console.error("Token exchange error:", exchangeData.error);
-          const errorMsg = typeof exchangeData.error === 'string' 
-            ? exchangeData.error 
-            : exchangeData.error.message || JSON.stringify(exchangeData.error);
+          const errorMsg =
+            typeof exchangeData.error === "string"
+              ? exchangeData.error
+              : exchangeData.error.message || JSON.stringify(exchangeData.error);
           toast.error(`Token exchange failed: ${errorMsg}`);
           return;
         }
@@ -497,7 +499,7 @@ export default function Accounts() {
 
         credentialsToStore = {
           access_token: exchangeData.access_token,
-          expires_at: new Date(Date.now() + (expiresIn * 1000)).toISOString(),
+          expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
         };
 
         // Store app credentials in metadata (not encrypted, needed for future refreshes)
@@ -509,11 +511,12 @@ export default function Accounts() {
         toast.success("Long-lived token obtained successfully!");
       } catch (exchangeError) {
         console.error("Token exchange error:", exchangeError);
-        const errorMsg = exchangeError instanceof Error 
-          ? exchangeError.message 
-          : typeof exchangeError === 'string' 
-            ? exchangeError 
-            : JSON.stringify(exchangeError);
+        const errorMsg =
+          exchangeError instanceof Error
+            ? exchangeError.message
+            : typeof exchangeError === "string"
+              ? exchangeError
+              : JSON.stringify(exchangeError);
         toast.error(`Token exchange failed: ${errorMsg}`);
         return;
       }
@@ -552,9 +555,12 @@ export default function Accounts() {
 
       // Step 2: Only after successful storage, notify n8n webhook
       // SECURITY: Only send user_id, integration_id, and platform_name - NO credentials
-      const isTokenExchanged = (platformKey === "facebook" || platformKey === "instagram") && 
-        fields.accessToken && fields.appId && fields.appSecret;
-      
+      const isTokenExchanged =
+        (platformKey === "facebook" || platformKey === "instagram") &&
+        fields.accessToken &&
+        fields.appId &&
+        fields.appSecret;
+
       try {
         const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials", {
           method: "POST",
@@ -888,16 +894,20 @@ export default function Accounts() {
                       <div className="flex items-center gap-3 mr-2">
                         {platformAccounts[0].tokenExpiration.displayText.accessToken && (
                           <div className="text-xs text-right">
-                            <span className="text-muted-foreground">Token: </span>
-                            <span className={`font-semibold ${platformAccounts[0].tokenExpiration.accessTokenStatus === 'expired' ? 'text-destructive' : platformAccounts[0].tokenExpiration.accessTokenStatus === 'expiring' ? 'text-orange-500' : platformAccounts[0].tokenExpiration.accessTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
+                            <span className="text-muted-foreground">Access Token: </span>
+                            <span
+                              className={`font-semibold ${platformAccounts[0].tokenExpiration.accessTokenStatus === "expired" ? "text-destructive" : platformAccounts[0].tokenExpiration.accessTokenStatus === "expiring" ? "text-orange-500" : platformAccounts[0].tokenExpiration.accessTokenStatus === "warning" ? "text-yellow-600" : "text-green-600"}`}
+                            >
                               {platformAccounts[0].tokenExpiration.displayText.accessToken}
                             </span>
                           </div>
                         )}
                         {platformAccounts[0].tokenExpiration.displayText.refreshToken && (
                           <div className="text-xs text-right">
-                            <span className="text-muted-foreground">Reconnect: </span>
-                            <span className={`font-semibold ${platformAccounts[0].tokenExpiration.refreshTokenStatus === 'expired' ? 'text-destructive' : platformAccounts[0].tokenExpiration.refreshTokenStatus === 'expiring' ? 'text-orange-500' : platformAccounts[0].tokenExpiration.refreshTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
+                            <span className="text-muted-foreground">Refresh Token: </span>
+                            <span
+                              className={`font-semibold ${platformAccounts[0].tokenExpiration.refreshTokenStatus === "expired" ? "text-destructive" : platformAccounts[0].tokenExpiration.refreshTokenStatus === "expiring" ? "text-orange-500" : platformAccounts[0].tokenExpiration.refreshTokenStatus === "warning" ? "text-yellow-600" : "text-green-600"}`}
+                            >
                               {platformAccounts[0].tokenExpiration.displayText.refreshToken}
                             </span>
                           </div>
@@ -972,11 +982,11 @@ export default function Accounts() {
                           </CardHeader>
                           <CardContent>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span className={`h-2 w-2 rounded-full ${
-                                account.tokenExpiration?.needsReconnect 
-                                  ? "bg-destructive" 
-                                  : "bg-green-500"
-                              }`} />
+                              <span
+                                className={`h-2 w-2 rounded-full ${
+                                  account.tokenExpiration?.needsReconnect ? "bg-destructive" : "bg-green-500"
+                                }`}
+                              />
                               {account.tokenExpiration?.needsReconnect ? "Reconnect Required" : "Connected"}
                             </div>
                           </CardContent>

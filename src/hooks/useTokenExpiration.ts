@@ -75,8 +75,8 @@ export function calculateTokenExpiration(data: Record<string, unknown> | null): 
 
   // Generate display text
   const displayText = {
-    accessToken: formatTimeRemaining(accessTokenDaysRemaining, "Expires in"),
-    refreshToken: formatTimeRemaining(refreshTokenDaysRemaining, "Reconnect in"),
+    accessToken: formatTimeRemaining(accessTokenDaysRemaining, "Token expires in"),
+    refreshToken: formatTimeRemaining(refreshTokenDaysRemaining, "Expires in"),
   };
 
   return {
