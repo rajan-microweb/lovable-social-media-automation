@@ -633,11 +633,16 @@ export default function CreatePost() {
                     <CardTitle>Select Accounts</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <PlatformAccountSelector
-                      accounts={platformAccounts}
-                      selectedAccountIds={selectedAccountIds}
-                      onToggle={handleAccountToggle}
-                    />
+                    {platforms.map((platform) => (
+                      <PlatformAccountSelector
+                        key={platform}
+                        accounts={platformAccounts}
+                        selectedAccountIds={selectedAccountIds}
+                        onAccountToggle={handleAccountToggle}
+                        loading={loadingPlatformAccounts}
+                        platform={platform}
+                      />
+                    ))}
                   </CardContent>
                 </Card>
               )}
@@ -1077,8 +1082,8 @@ export default function CreatePost() {
 
       <AiPromptModal
         open={aiModalOpen}
-        onOpenChange={setAiModalOpen}
-        field={aiModalField}
+        onClose={() => setAiModalOpen(false)}
+        fieldType={aiModalField}
         onGenerate={handleAiGenerate}
       />
 
