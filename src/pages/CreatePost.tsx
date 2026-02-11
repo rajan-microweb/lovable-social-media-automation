@@ -162,14 +162,15 @@ export default function CreatePost() {
     }
   }, [typeOfPost]);
 
-  // Reset selected accounts when platforms change
+  // Reset selected accounts when platforms change (but only when accounts have loaded)
   useEffect(() => {
+    if (loadingPlatformAccounts) return; // Don't filter while loading
     // Filter out account IDs that no longer belong to selected platforms
     const validAccountIds = selectedAccountIds.filter((id) => platformAccounts.some((account) => account.id === id));
     if (validAccountIds.length !== selectedAccountIds.length) {
       setSelectedAccountIds(validAccountIds);
     }
-  }, [platforms, platformAccounts]);
+  }, [platforms, platformAccounts, loadingPlatformAccounts]);
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     // Check if platform is connected before allowing selection (case-insensitive)
