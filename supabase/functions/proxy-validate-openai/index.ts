@@ -49,9 +49,9 @@ Deno.serve(async (req) => {
       }));
     }
 
-    // Validate the stored OpenAI key
-    console.log("[openai] Validating API key...");
-    const response = await fetch("https://api.openai.com/v1/models", {
+    // Validate the stored OpenAI key by fetching account details
+    console.log("[openai] Validating API key via /v1/me...");
+    const response = await fetch("https://api.openai.com/v1/me", {
       headers: { Authorization: `Bearer ${openaiKey}` },
     });
 
@@ -63,12 +63,38 @@ Deno.serve(async (req) => {
       }));
     }
 
-    console.log("[openai] API key is valid");
+    const accountData = await response.json();
+    console.log("[openai] API key is valid, account retrieved");
 
-    // Return only validation status - NO credentials
+    // Build metadata matching the expected format
+    const personalInfo: Record<string, unknown> = {
+      name: accountData.name || null,
+      email: accountData.email || null,
+      openai_user_id: accountData.id || null,
+      phone: accountData.phone_number || null,
+      avatar_url: accountData.picture || null,
+      created_at: accountData.created
+        ? new Date(accountData.created * 1000).toISOString()
+        : null,
+    };
+
+    const organizations = (accountData.orgs?.data || []).map(
+      (org: Record<string, unknown>) => ({
+        org_id: org.id,
+        org_name: org.name,
+        org_title: org.title,
+        role: org.role,
+        is_default: org.is_default,
+        is_personal: org.personal,
+        description: org.description,
+      })
+    );
+
     return jsonResponse(successResponse({
       valid: true,
       message: "OpenAI API key is valid",
+      personal_info: personalInfo,
+      organizations,
     }));
   } catch (error) {
     console.error("Error in proxy-validate-openai:", error);
