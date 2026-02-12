@@ -75,13 +75,13 @@ Deno.serve(async (req) => {
 
     console.log(`[proxy-openai-generate-video] Job created: ${jobId}, polling...`);
 
-    // Poll for completion
+    // Poll for completion (matches n8n workflow: GET /v1/videos/{id})
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 
       const pollResponse = await fetch(
-        `https://api.openai.com/v1/video/generations/jobs/${jobId}`,
-        { headers: { "Authorization": `Bearer ${openaiKey}` } }
+        `https://api.openai.com/v1/videos/${jobId}`,
+        { headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" } }
       );
 
       if (!pollResponse.ok) {
@@ -94,9 +94,23 @@ Deno.serve(async (req) => {
       console.log(`[proxy-openai-generate-video] Poll ${attempt + 1}: status=${pollData.status}`);
 
       if (pollData.status === "completed") {
-        const videoUrl = pollData.url || pollData.result?.url;
+        // Fetch the actual video content (matches n8n: GET /v1/videos/{id}/content)
+        console.log("[proxy-openai-generate-video] Completed, fetching content...");
+        const contentResponse = await fetch(
+          `https://api.openai.com/v1/videos/${jobId}/content`,
+          { headers: { "Authorization": `Bearer ${openaiKey}` } }
+        );
+
+        if (!contentResponse.ok) {
+          const errorText = await contentResponse.text();
+          console.error("[proxy-openai-generate-video] Content fetch error:", contentResponse.status, errorText);
+          return jsonResponse(errorResponse(`Failed to fetch video content: ${contentResponse.status}`), 502);
+        }
+
+        const contentData = await contentResponse.json();
+        const videoUrl = contentData.url || contentData.result?.url;
         if (!videoUrl) {
-          return jsonResponse(errorResponse("Video completed but no URL found"), 502);
+          return jsonResponse(errorResponse("Video completed but no URL found in content"), 502);
         }
         console.log("[proxy-openai-generate-video] Success");
         return jsonResponse(successResponse({ videoUrl }));
@@ -107,6 +121,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    return jsonResponse(errorResponse("Video generation timed out after 5 minutes"), 504);
     return jsonResponse(errorResponse("Video generation timed out after 5 minutes"), 504);
   } catch (error) {
     console.error("[proxy-openai-generate-video] Error:", error);
