@@ -571,40 +571,85 @@ export default function CreatePost() {
           <p className="text-muted-foreground">Create a new social media post</p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Post Type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { value: "onlyText", label: "Text Only" },
-                { value: "image", label: "Image" },
-                { value: "carousel", label: "Carousel" },
-                { value: "video", label: "Video" },
-                { value: "shorts", label: "Shorts" },
-                { value: "article", label: "Article" },
-                { value: "pdf", label: "PDF" },
-              ].map((type) => (
-                <button
-                  key={type.value}
-                  onClick={() => setTypeOfPost(type.value)}
-                  className={`p-3 rounded-lg border-2 text-left transition-all ${
-                    typeOfPost === type.value
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  {type.label}
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Post Details - Title, Description, Type of Post */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Post Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label htmlFor="postTitle">Post Title</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openAiModal("text", "postTitle")}
+                    className="text-xs h-auto py-1"
+                  >
+                    <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
+                  </Button>
+                </div>
+                <Input
+                  id="postTitle"
+                  value={postTitle}
+                  onChange={(e) => setPostTitle(e.target.value)}
+                  placeholder="Enter post title..."
+                />
+              </div>
 
-        {typeOfPost && (
-          <>
-            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label htmlFor="postDescription">Post Description (Optional)</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openAiModal("text", "postDescription")}
+                    className="text-xs h-auto py-1"
+                  >
+                    <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
+                  </Button>
+                </div>
+                <Textarea
+                  id="postDescription"
+                  value={postDescription}
+                  onChange={(e) => setPostDescription(e.target.value)}
+                  placeholder="Enter post description..."
+                  rows={3}
+                  maxLength={5000}
+                />
+                <p className="text-xs text-muted-foreground text-right mt-1">
+                  {postDescription.length}/5000
+                </p>
+              </div>
+
+              {/* Type of Post as Select dropdown */}
+              <div>
+                <Label>
+                  Type of Post <span className="text-destructive">*</span>
+                </Label>
+                <Select value={typeOfPost} onValueChange={setTypeOfPost}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="onlyText">Only Text</SelectItem>
+                    <SelectItem value="image">Image</SelectItem>
+                    <SelectItem value="carousel">Carousel (Multiple Images)</SelectItem>
+                    <SelectItem value="video">Video (landscape)</SelectItem>
+                    <SelectItem value="shorts">Reels/Shorts (portrait)</SelectItem>
+                    <SelectItem value="article">Article</SelectItem>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {typeOfPost && (
+            <>
               {/* Platforms selection */}
               <Card>
                 <CardHeader>
@@ -646,51 +691,6 @@ export default function CreatePost() {
                   </CardContent>
                 </Card>
               )}
-
-              {/* Title and description */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Post Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="postTitle">Title</Label>
-                    <Input
-                      id="postTitle"
-                      value={postTitle}
-                      onChange={(e) => setPostTitle(e.target.value)}
-                      placeholder="Enter post title"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openAiModal("text", "postTitle")}
-                      className="mt-1"
-                    >
-                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                    </Button>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="postDescription">Description</Label>
-                    <Textarea
-                      id="postDescription"
-                      value={postDescription}
-                      onChange={(e) => setPostDescription(e.target.value)}
-                      placeholder="Enter post description"
-                      rows={3}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openAiModal("text", "postDescription")}
-                      className="mt-1"
-                    >
-                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
 
               {/* Text content */}
               {showTextContent && (
@@ -1075,9 +1075,9 @@ export default function CreatePost() {
                   Cancel
                 </Button>
               </div>
-            </form>
-          </>
-        )}
+            </>
+          )}
+        </form>
       </div>
 
       <AiPromptModal
