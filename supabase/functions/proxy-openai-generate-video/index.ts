@@ -94,26 +94,72 @@ Deno.serve(async (req) => {
       console.log(`[proxy-openai-generate-video] Poll ${attempt + 1}: status=${pollData.status}`);
 
       if (pollData.status === "completed") {
-        // Fetch the actual video content (matches n8n: GET /v1/videos/{id}/content)
+        // Fetch the video content URL
+        // The /content endpoint returns raw binary (MP4), so we use redirect: "manual"
+        // to capture the redirect URL, or download and upload to storage
         console.log("[proxy-openai-generate-video] Completed, fetching content...");
+
         const contentResponse = await fetch(
           `https://api.openai.com/v1/videos/${jobId}/content`,
-          { headers: { "Authorization": `Bearer ${openaiKey}` } }
+          {
+            headers: { "Authorization": `Bearer ${openaiKey}` },
+            redirect: "manual",
+          }
         );
 
-        if (!contentResponse.ok) {
-          const errorText = await contentResponse.text();
-          console.error("[proxy-openai-generate-video] Content fetch error:", contentResponse.status, errorText);
-          return jsonResponse(errorResponse(`Failed to fetch video content: ${contentResponse.status}`), 502);
+        // If we get a redirect, use the Location header as the video URL
+        if (contentResponse.status >= 300 && contentResponse.status < 400) {
+          const videoUrl = contentResponse.headers.get("Location");
+          if (videoUrl) {
+            console.log("[proxy-openai-generate-video] Got redirect URL");
+            return jsonResponse(successResponse({ videoUrl }));
+          }
         }
 
-        const contentData = await contentResponse.json();
-        const videoUrl = contentData.url || contentData.result?.url;
-        if (!videoUrl) {
-          return jsonResponse(errorResponse("Video completed but no URL found in content"), 502);
+        // If direct binary response, upload to Supabase storage
+        if (contentResponse.ok) {
+          const contentType = contentResponse.headers.get("content-type") || "";
+
+          // If it's JSON, try to extract a URL
+          if (contentType.includes("application/json")) {
+            const contentData = await contentResponse.json();
+            const videoUrl = contentData.url || contentData.result?.url;
+            if (videoUrl) {
+              console.log("[proxy-openai-generate-video] Got URL from JSON response");
+              return jsonResponse(successResponse({ videoUrl }));
+            }
+          }
+
+          // It's raw video binary — upload to Supabase storage
+          console.log("[proxy-openai-generate-video] Got raw binary, uploading to storage...");
+          const videoBlob = await contentResponse.arrayBuffer();
+          const fileName = `ai-video-${jobId}-${Date.now()}.mp4`;
+          const filePath = `${user_id}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("post-media")
+            .upload(filePath, videoBlob, {
+              contentType: "video/mp4",
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error("[proxy-openai-generate-video] Upload error:", uploadError.message);
+            return jsonResponse(errorResponse(`Failed to upload video: ${uploadError.message}`), 502);
+          }
+
+          const { data: publicUrlData } = supabase.storage
+            .from("post-media")
+            .getPublicUrl(filePath);
+
+          console.log("[proxy-openai-generate-video] Success, uploaded to storage");
+          return jsonResponse(successResponse({ videoUrl: publicUrlData.publicUrl }));
         }
-        console.log("[proxy-openai-generate-video] Success");
-        return jsonResponse(successResponse({ videoUrl }));
+
+        // Content fetch failed
+        const errorText = await contentResponse.text();
+        console.error("[proxy-openai-generate-video] Content fetch error:", contentResponse.status, errorText.substring(0, 200));
+        return jsonResponse(errorResponse(`Failed to fetch video content: ${contentResponse.status}`), 502);
       }
 
       if (pollData.status === "failed") {
@@ -121,7 +167,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    return jsonResponse(errorResponse("Video generation timed out after 5 minutes"), 504);
     return jsonResponse(errorResponse("Video generation timed out after 5 minutes"), 504);
   } catch (error) {
     console.error("[proxy-openai-generate-video] Error:", error);
