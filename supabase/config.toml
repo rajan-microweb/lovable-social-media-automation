@@ -92,3 +92,12 @@ verify_jwt = false
 
 [functions.proxy-twitter-fetch-user]
 verify_jwt = false
+
+[functions.proxy-openai-generate-text]
+verify_jwt = false
+
+[functions.proxy-openai-generate-image]
+verify_jwt = false
+
+[functions.proxy-openai-generate-video]
+verify_jwt = false
