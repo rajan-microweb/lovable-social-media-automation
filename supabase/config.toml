@@ -58,7 +58,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.upload-ai-media]
-verify_jwt = true
+verify_jwt = false
 
 [functions.migrate-encryption]
 verify_jwt = false
