@@ -1,114 +1,118 @@
 
 
-# Plan: Create Proxy Edge Functions for OpenAI Content Generation
+# Plan: Async Video Generation with Polling
 
-## Summary
+## Problem
+The `proxy-openai-generate-video` edge function polls OpenAI for up to 5 minutes (20 attempts x 15s), but edge functions have a 60-second timeout. This causes a 504 timeout error every time video generation is attempted.
 
-Replace the current n8n workflow where the OpenAI API key is passed from the frontend. Instead, create 3 new proxy edge functions that accept only a `user_id` and prompt, fetch the OpenAI API key securely from the database, call the OpenAI API server-side, and return the result to n8n.
+## Solution
+Split the video workflow into two phases: **start job** (returns immediately) and **check status** (called repeatedly by the frontend). The ChatGPT advice is correct -- we need an async job system.
 
-## Current Workflow (n8n)
-
-The n8n workflow "AI Content Generator" receives a webhook POST and routes based on which prompt field is present:
-
-1. **Text Generation** -- `textPrompt` exists --> calls `POST https://api.openai.com/v1/chat/completions` with `gpt-4o-mini` and a social media system prompt --> returns `{ text }`
-2. **Image Generation** -- `imagePrompt` exists --> calls `POST https://api.openai.com/v1/images/generations` with `dall-e-3`, 1024x1024 --> returns `{ imageUrl }`
-3. **Video Generation** -- `videoPrompt` exists --> calls `POST https://api.openai.com/v1/videos` with `sora-2`, 720x1280 --> waits 15s --> polls job status --> loops until completed --> returns `{ videoUrl }`
-
-All three currently receive the API key via `$json.body.apiKey` from the request body.
-
-## New Architecture
-
-Create 3 proxy edge functions. n8n will call these instead of calling OpenAI directly. The API key never leaves the server.
+## Architecture
 
 ```text
-n8n Workflow
+Frontend (AiPromptModal)
   |
-  +--> proxy-openai-generate-text    (user_id, textPrompt, context)
-  |       |-> decrypt OpenAI key from DB
-  |       |-> call /v1/chat/completions
-  |       \-> return { text }
+  |-- POST /ai-content-generator (videoPrompt)
+  |       |
+  |       n8n --> proxy-openai-start-video (returns jobId in ~2s)
+  |       n8n --> responds { jobId, status: "processing" }
   |
-  +--> proxy-openai-generate-image   (user_id, imagePrompt)
-  |       |-> decrypt OpenAI key from DB
-  |       |-> call /v1/images/generations
-  |       \-> return { imageUrl }
+  |-- Poll every 10s: POST /ai-content-generator or direct edge fn
+  |       |
+  |       proxy-openai-check-video (jobId) --> checks OpenAI status
+  |       If completed --> downloads binary, uploads to storage, returns videoUrl
+  |       If processing --> returns { status: "processing" }
   |
-  +--> proxy-openai-generate-video   (user_id, videoPrompt)
-          |-> decrypt OpenAI key from DB
-          |-> call /v1/videos (Sora)
-          |-> poll job status with retry loop
-          \-> return { videoUrl }
+  |-- When videoUrl received --> onGenerate(videoUrl)
 ```
 
-## Edge Functions to Create
+## Changes Required
 
-### 1. `proxy-openai-generate-text`
+### 1. New Edge Function: `proxy-openai-start-video`
+**File:** `supabase/functions/proxy-openai-start-video/index.ts`
 
-**File:** `supabase/functions/proxy-openai-generate-text/index.ts`
+- Accepts `{ user_id, videoPrompt }`
+- Decrypts OpenAI key, calls `POST /v1/videos` to start job
+- Returns `{ jobId, status: "processing" }` immediately (no polling)
+- Responds in under 5 seconds -- no timeout risk
 
-- **Input (POST body):** `{ user_id, textPrompt, platforms?, typeOfPost?, title?, description? }`
-- **Auth:** x-api-key header validated against `N8N_API_KEY`
-- **Logic:**
-  1. Validate input (user_id and textPrompt required)
-  2. Use `getDecryptedPlatformCredentials(supabase, user_id, "openai")` to get the API key
-  3. Call `POST https://api.openai.com/v1/chat/completions` with model `gpt-4o-mini` and the existing social media system prompt from the n8n workflow
-  4. Return `{ success: true, data: { text: response.choices[0].message.content } }`
-- **Config:** `verify_jwt = false`
+### 2. New Edge Function: `proxy-openai-check-video`
+**File:** `supabase/functions/proxy-openai-check-video/index.ts`
 
-### 2. `proxy-openai-generate-image`
+- Accepts `{ user_id, jobId }`
+- Decrypts OpenAI key, calls `GET /v1/videos/{jobId}` to check status
+- If `completed`: fetches `/content`, handles binary upload to storage, returns `{ status: "completed", videoUrl }`
+- If `processing`/`pending`: returns `{ status: "processing" }`
+- If `failed`: returns `{ status: "failed", error }` 
+- Each call takes only a few seconds -- no timeout risk
 
-**File:** `supabase/functions/proxy-openai-generate-image/index.ts`
+### 3. Remove Old Function: `proxy-openai-generate-video`
+Delete `supabase/functions/proxy-openai-generate-video/index.ts` and its config entry since it will be fully replaced by the two new functions.
 
-- **Input (POST body):** `{ user_id, imagePrompt }`
-- **Auth:** x-api-key header validated against `N8N_API_KEY`
-- **Logic:**
-  1. Validate input (user_id and imagePrompt required)
-  2. Decrypt OpenAI key from DB
-  3. Call `POST https://api.openai.com/v1/images/generations` with model `dall-e-3`, n=1, size `1024x1024`
-  4. Return `{ success: true, data: { imageUrl: response.data[0].url } }`
-- **Config:** `verify_jwt = false`
+### 4. Update `supabase/config.toml`
+- Remove `[functions.proxy-openai-generate-video]`
+- Add `[functions.proxy-openai-start-video]` with `verify_jwt = false`
+- Add `[functions.proxy-openai-check-video]` with `verify_jwt = false`
 
-### 3. `proxy-openai-generate-video`
+### 5. Update Frontend: `AiPromptModal.tsx`
+Modify the video generation branch to use a two-phase approach:
 
-**File:** `supabase/functions/proxy-openai-generate-video/index.ts`
+**Phase 1 -- Start:** Call n8n webhook with `videoPrompt`, receive `{ jobId, status: "processing" }`
 
-- **Input (POST body):** `{ user_id, videoPrompt }`
-- **Auth:** x-api-key header validated against `N8N_API_KEY`
-- **Logic:**
-  1. Validate input (user_id and videoPrompt required)
-  2. Decrypt OpenAI key from DB
-  3. Call `POST https://api.openai.com/v1/videos` with model `sora-2`, size `720x1280` to start the job
-  4. Poll `GET /v1/video/generations/jobs/{job_id}` every 15 seconds until status is `completed` (with a max timeout of ~5 minutes to prevent infinite loops)
-  5. Return `{ success: true, data: { videoUrl: response.url } }`
-- **Config:** `verify_jwt = false`
+**Phase 2 -- Poll:** Every 10 seconds, call a second n8n webhook (or directly call the check edge function) with the `jobId`. Show progress like "Generating video... (30s elapsed)". When `status === "completed"`, use the returned `videoUrl`.
 
-### 4. Config Updates
+The modal stays open with a progress indicator during polling. Max polling duration: 5 minutes with a timeout message.
 
-Add to `supabase/config.toml`:
+### 6. n8n Workflow Changes (Manual)
+You will need to update your n8n workflow:
 
-```toml
-[functions.proxy-openai-generate-text]
-verify_jwt = false
+- **VIDEO branch**: Change the HTTP Request node to call `proxy-openai-start-video` instead of `proxy-openai-generate-video`. Update "Respond to Webhook" to return `{ jobId, status }` instead of `{ videoUrl }`.
+- **New workflow**: Create a second webhook at `/check-video-status` that calls `proxy-openai-check-video` with the `jobId` and returns the result.
 
-[functions.proxy-openai-generate-image]
-verify_jwt = false
+---
 
-[functions.proxy-openai-generate-video]
-verify_jwt = false
+## Technical Details
+
+### `proxy-openai-start-video/index.ts`
+```typescript
+// Validates API key, decrypts OpenAI key
+// POST https://api.openai.com/v1/videos { model: "sora-2", prompt, size: "720x1280" }
+// Returns: { success: true, data: { jobId: response.id, status: "processing" } }
 ```
 
-## Shared Patterns
+### `proxy-openai-check-video/index.ts`
+```typescript
+// Validates API key, decrypts OpenAI key
+// GET https://api.openai.com/v1/videos/{jobId}
+// If completed:
+//   GET /v1/videos/{jobId}/content (redirect: "manual")
+//   Handle redirect URL / JSON URL / raw binary upload to storage
+//   Returns: { success: true, data: { status: "completed", videoUrl } }
+// If processing:
+//   Returns: { success: true, data: { status: "processing" } }
+// If failed:
+//   Returns: { success: true, data: { status: "failed" } }
+```
 
-All three functions will:
-- Import from `../_shared/encryption.ts` (corsHeaders, validateApiKey, createSupabaseClient, getDecryptedPlatformCredentials, jsonResponse, successResponse, errorResponse)
-- Extract the OpenAI key as `credentials.api_key || credentials.apiKey`
-- Use the standardized response format `{ success, data, error }`
-- Include proper CORS handling and error logging
+### Frontend Polling Logic (AiPromptModal.tsx)
+```typescript
+// Video branch:
+// 1. POST to n8n webhook -> get { jobId, status }
+// 2. setInterval every 10s -> call check-video-status webhook
+// 3. Show elapsed time in progress text
+// 4. On "completed" -> clearInterval, use videoUrl
+// 5. On "failed" or timeout (5 min) -> clearInterval, show error
+```
 
-## n8n Workflow Changes (Manual)
+### Files Created
+- `supabase/functions/proxy-openai-start-video/index.ts`
+- `supabase/functions/proxy-openai-check-video/index.ts`
 
-After deploying, update the n8n workflow to:
-- Replace the 3 direct OpenAI HTTP Request nodes with calls to these proxy edge functions
-- Remove `apiKey` from the webhook body -- only pass `user_id` and the prompt
-- Each n8n node just does a POST to the proxy URL with `x-api-key` header and `{ user_id, prompt }` body
+### Files Modified
+- `src/components/AiPromptModal.tsx` (async polling for video)
+- `supabase/config.toml` (add new functions, remove old)
+
+### Files Deleted
+- `supabase/functions/proxy-openai-generate-video/index.ts`
 
