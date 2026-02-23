@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadMediaFromUrl, uploadBase64ToStorage } from "@/lib/mediaUploadUtils";
@@ -26,6 +27,10 @@ interface AiPromptModalProps {
   context?: AiContext;
 }
 
+const VIDEO_POLL_INTERVAL_MS = 10_000;
+const VIDEO_MAX_POLL_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const CHECK_VIDEO_WEBHOOK = "https://n8n.srv1248804.hstgr.cloud/webhook/check-video-status";
+
 export function AiPromptModal({
   open,
   onClose,
@@ -37,6 +42,83 @@ export function AiPromptModal({
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [videoElapsed, setVideoElapsed] = useState(0);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
+
+  const cleanupPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (elapsedIntervalRef.current) {
+      clearInterval(elapsedIntervalRef.current);
+      elapsedIntervalRef.current = null;
+    }
+    setVideoElapsed(0);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => cleanupPolling();
+  }, [cleanupPolling]);
+
+  const pollVideoStatus = useCallback(
+    async (jobId: string) => {
+      return new Promise<string>((resolve, reject) => {
+        startTimeRef.current = Date.now();
+
+        // Elapsed time ticker
+        elapsedIntervalRef.current = setInterval(() => {
+          setVideoElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }, 1000);
+
+        // Status polling
+        pollIntervalRef.current = setInterval(async () => {
+          const elapsed = Date.now() - startTimeRef.current;
+
+          if (elapsed >= VIDEO_MAX_POLL_DURATION_MS) {
+            cleanupPolling();
+            reject(new Error("Video generation timed out after 5 minutes"));
+            return;
+          }
+
+          try {
+            const res = await fetch(CHECK_VIDEO_WEBHOOK, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ jobId, userId: context?.userId }),
+            });
+
+            if (!res.ok) {
+              console.error("Check video status error:", res.status);
+              return; // keep polling
+            }
+
+            const data = await res.json();
+            console.log("Video poll response:", JSON.stringify(data, null, 2));
+
+            const status = data.status || data.data?.status;
+            const videoUrl = data.videoUrl || data.data?.videoUrl || data.url || "";
+
+            if (status === "completed" && videoUrl) {
+              cleanupPolling();
+              resolve(videoUrl);
+            } else if (status === "failed") {
+              cleanupPolling();
+              reject(new Error(data.error || data.data?.error || "Video generation failed"));
+            }
+            // else still processing — keep polling
+          } catch (err) {
+            console.error("Poll error:", err);
+            // keep polling on network errors
+          }
+        }, VIDEO_POLL_INTERVAL_MS);
+      });
+    },
+    [cleanupPolling, context?.userId]
+  );
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -48,9 +130,7 @@ export function AiPromptModal({
     setUploadProgress("");
 
     try {
-      // Build payload with prompt and context
       const payload: Record<string, any> = {
-        // Always include context fields
         userId: context?.userId,
         platforms: context?.platforms,
         typeOfPost: context?.typeOfPost,
@@ -59,7 +139,6 @@ export function AiPromptModal({
         description: context?.description,
       };
 
-      // Add the prompt based on field type
       if (fieldType === "text") {
         payload.textPrompt = prompt;
       } else if (fieldType === "image") {
@@ -83,11 +162,8 @@ export function AiPromptModal({
       }
 
       const data = await response.json();
-      
-      // Debug: log the full n8n response to understand its structure
       console.log("n8n AI response:", JSON.stringify(data, null, 2));
 
-      // Handle different response types
       if (fieldType === "text" && data.text) {
         onGenerate(data.text);
         toast.success("Text generated successfully");
@@ -101,19 +177,37 @@ export function AiPromptModal({
         onGenerate(permanentUrl);
         toast.success("Image generated and stored successfully");
       } else if (fieldType === "video") {
-        const videoUrl = data.videoUrl || data.video_url || data.data?.videoUrl || data.url || "";
-        if (!videoUrl || typeof videoUrl !== "string" || videoUrl.trim() === "") {
-          throw new Error(`No video URL returned. Response: ${JSON.stringify(data)}`);
-        }
-        // If already a storage URL, use directly
-        if (videoUrl.includes("supabase.co/storage")) {
-          onGenerate(videoUrl);
+        // Async two-phase: n8n returns { jobId, status } immediately
+        const jobId = data.jobId || data.data?.jobId;
+        if (!jobId) {
+          // Fallback: maybe n8n returned videoUrl directly (old flow)
+          const videoUrl = data.videoUrl || data.video_url || data.data?.videoUrl || data.url || "";
+          if (videoUrl && typeof videoUrl === "string" && videoUrl.trim() !== "") {
+            if (videoUrl.includes("supabase.co/storage")) {
+              onGenerate(videoUrl);
+            } else {
+              setUploadProgress("Uploading video to storage...");
+              const permanentUrl = await uploadAiMediaToStorage(videoUrl.trim(), "video");
+              onGenerate(permanentUrl);
+            }
+            toast.success("Video generated successfully");
+          } else {
+            throw new Error(`No jobId or videoUrl returned. Response: ${JSON.stringify(data)}`);
+          }
         } else {
-          setUploadProgress("Uploading video to storage...");
-          const permanentUrl = await uploadAiMediaToStorage(videoUrl.trim(), "video");
-          onGenerate(permanentUrl);
+          // Poll for completion
+          setUploadProgress("Generating video...");
+          const videoUrl = await pollVideoStatus(jobId);
+
+          if (videoUrl.includes("supabase.co/storage")) {
+            onGenerate(videoUrl);
+          } else {
+            setUploadProgress("Uploading video to storage...");
+            const permanentUrl = await uploadAiMediaToStorage(videoUrl.trim(), "video");
+            onGenerate(permanentUrl);
+          }
+          toast.success("Video generated and stored successfully");
         }
-        toast.success("Video generated and stored successfully");
       } else if (fieldType === "pdf") {
         const pdfUrl = data.pdfUrl || data.pdf_url || data.data?.pdfUrl || data.url || "";
         if (!pdfUrl || typeof pdfUrl !== "string" || pdfUrl.trim() === "") {
@@ -133,28 +227,21 @@ export function AiPromptModal({
     } finally {
       setLoading(false);
       setUploadProgress("");
+      cleanupPolling();
     }
   };
 
-  /**
-   * Uploads AI-generated media to Supabase storage
-   * Handles both regular URLs and base64 data URLs
-   */
   const uploadAiMediaToStorage = async (
     url: string,
     mediaType: "image" | "video"
   ): Promise<string> => {
     try {
-      // Check if it's a base64 data URL
       if (url.startsWith("data:")) {
         return await uploadBase64ToStorage(url, mediaType, supabase);
       }
-      
-      // Regular URL - download and upload
       return await uploadMediaFromUrl(url, mediaType, supabase);
     } catch (error) {
       console.error("Failed to upload to storage, using original URL:", error);
-      // Fall back to original URL if upload fails
       toast.warning("Could not store in permanent storage, using original URL");
       return url;
     }
@@ -163,9 +250,12 @@ export function AiPromptModal({
   const handleClose = () => {
     if (!loading) {
       setPrompt("");
+      cleanupPolling();
       onClose();
     }
   };
+
+  const videoProgressPercent = Math.min((videoElapsed / 300) * 100, 100);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -186,9 +276,18 @@ export function AiPromptModal({
             />
           </div>
           {uploadProgress && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{uploadProgress}</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>
+                  {videoElapsed > 0
+                    ? `${uploadProgress} (${videoElapsed}s elapsed)`
+                    : uploadProgress}
+                </span>
+              </div>
+              {fieldType === "video" && videoElapsed > 0 && (
+                <Progress value={videoProgressPercent} className="h-2" />
+              )}
             </div>
           )}
           <div className="flex justify-end gap-3">
