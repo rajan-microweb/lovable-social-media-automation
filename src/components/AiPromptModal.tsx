@@ -88,23 +88,38 @@ export function AiPromptModal({
       if (fieldType === "text" && data.text) {
         onGenerate(data.text);
         toast.success("Text generated successfully");
-      } else if (fieldType === "image" && data.imageUrl) {
-        // Upload AI-generated image to Supabase storage
+      } else if (fieldType === "image") {
+        const imageUrl = data.imageUrl || data.image_url || data.url;
+        if (!imageUrl) {
+          throw new Error("No image URL returned from AI generator");
+        }
         setUploadProgress("Uploading image to storage...");
-        const permanentUrl = await uploadAiMediaToStorage(data.imageUrl, "image");
+        const permanentUrl = await uploadAiMediaToStorage(imageUrl, "image");
         onGenerate(permanentUrl);
         toast.success("Image generated and stored successfully");
-      } else if (fieldType === "video" && data.videoUrl) {
-        // Upload AI-generated video to Supabase storage
-        setUploadProgress("Uploading video to storage...");
-        const permanentUrl = await uploadAiMediaToStorage(data.videoUrl, "video");
-        onGenerate(permanentUrl);
+      } else if (fieldType === "video") {
+        const videoUrl = data.videoUrl || data.video_url || data.url;
+        if (!videoUrl) {
+          throw new Error("No video URL returned from AI generator");
+        }
+        // If already a storage URL, use directly
+        if (videoUrl.includes("supabase.co/storage")) {
+          onGenerate(videoUrl);
+        } else {
+          setUploadProgress("Uploading video to storage...");
+          const permanentUrl = await uploadAiMediaToStorage(videoUrl, "video");
+          onGenerate(permanentUrl);
+        }
         toast.success("Video generated and stored successfully");
-      } else if (fieldType === "pdf" && data.pdfUrl) {
-        onGenerate(data.pdfUrl);
+      } else if (fieldType === "pdf") {
+        const pdfUrl = data.pdfUrl || data.pdf_url || data.url;
+        if (!pdfUrl) {
+          throw new Error("No PDF URL returned from AI generator");
+        }
+        onGenerate(pdfUrl);
         toast.success("PDF generated successfully");
       } else {
-        throw new Error("Invalid response from AI generator");
+        throw new Error(`AI generation failed: no ${fieldType} content returned. Response: ${JSON.stringify(data)}`);
       }
 
       setPrompt("");
