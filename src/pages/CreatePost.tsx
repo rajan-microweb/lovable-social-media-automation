@@ -479,50 +479,58 @@ export default function CreatePost() {
       return;
     }
 
+    if (getTotalCarouselCount() >= 10) {
+      toast.error("Maximum 10 images reached");
+      return;
+    }
+
     setCarouselGenerating(true);
 
     try {
-      const response = await fetch(
-        "https://fcfdyivyjidzqjtanalq.supabase.co/functions/v1/upload-ai-media",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-           body: JSON.stringify({
-            imagePrompt: carouselAiPrompt,
-            userId: user?.id,
-            platforms: [platforms.includes("instagram") ? "instagram" : "general"],
-            typeOfPost: "carousel",
-          }),
-        }
-      );
+      // Step 1: Call n8n webhook to generate the image
+      const genResponse = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imagePrompt: carouselAiPrompt,
+          userId: user?.id,
+          platforms: platforms,
+          typeOfPost: "carousel",
+          title: postTitle,
+          description: postDescription,
+        }),
+      });
 
-      if (!response.ok) {
-        throw new Error(`AI generation failed: ${response.statusText}`);
+      if (!genResponse.ok) {
+        throw new Error(`AI generation failed: ${genResponse.statusText}`);
       }
 
-      const data = await response.json();
+      const data = await genResponse.json();
+      console.log("Carousel AI response:", JSON.stringify(data, null, 2));
 
-      if (data.imageUrl) {
-        // For Instagram carousel, convert AI-generated images to JPEG
-        const isInstaCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
-
-        if (isInstaCarousel) {
-          try {
-            const jpegFile = await convertUrlToJpegFile(data.imageUrl, `carousel-${Date.now()}.jpg`);
-            setCarouselImages([...carouselImages, data.imageUrl]);
-          } catch (error) {
-            console.error("JPEG conversion error:", error);
-            toast.error("Failed to process AI-generated image");
-          }
-        } else {
-          setCarouselImages([...carouselImages, data.imageUrl]);
-        }
-
-        setCarouselAiPrompt("");
-        toast.success("AI image added to carousel");
-      } else {
-        toast.error("No image URL received from AI");
+      const rawImageUrl = data.imageUrl || data.image_url || data.data?.imageUrl || data.url || "";
+      if (!rawImageUrl || typeof rawImageUrl !== "string" || rawImageUrl.trim() === "") {
+        throw new Error(`No image URL returned. Response: ${JSON.stringify(data)}`);
       }
+
+      // Step 2: Upload to permanent storage via edge function
+      let permanentUrl = rawImageUrl.trim();
+      if (!permanentUrl.includes("supabase.co/storage")) {
+        const uploadResponse = await supabase.functions.invoke("upload-ai-media", {
+          body: { externalUrl: permanentUrl, mediaType: "image" },
+        });
+
+        if (uploadResponse.error) {
+          console.error("Storage upload failed, using original URL:", uploadResponse.error);
+          toast.warning("Could not store permanently, using original URL");
+        } else if (uploadResponse.data?.url) {
+          permanentUrl = uploadResponse.data.url;
+        }
+      }
+
+      setCarouselImages((prev) => [...prev, permanentUrl]);
+      setCarouselAiPrompt("");
+      toast.success(`AI image added to carousel (${getTotalCarouselCount() + 1}/10)`);
     } catch (error: any) {
       console.error("AI generation error:", error);
       toast.error(error.message || "Failed to generate image");
