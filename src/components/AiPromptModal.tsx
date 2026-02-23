@@ -83,38 +83,41 @@ export function AiPromptModal({
       }
 
       const data = await response.json();
+      
+      // Debug: log the full n8n response to understand its structure
+      console.log("n8n AI response:", JSON.stringify(data, null, 2));
 
       // Handle different response types
       if (fieldType === "text" && data.text) {
         onGenerate(data.text);
         toast.success("Text generated successfully");
       } else if (fieldType === "image") {
-        const imageUrl = data.imageUrl || data.image_url || data.url;
-        if (!imageUrl) {
-          throw new Error("No image URL returned from AI generator");
+        const imageUrl = data.imageUrl || data.image_url || data.data?.imageUrl || data.url || "";
+        if (!imageUrl || typeof imageUrl !== "string" || imageUrl.trim() === "") {
+          throw new Error(`No image URL returned. Response: ${JSON.stringify(data)}`);
         }
         setUploadProgress("Uploading image to storage...");
-        const permanentUrl = await uploadAiMediaToStorage(imageUrl, "image");
+        const permanentUrl = await uploadAiMediaToStorage(imageUrl.trim(), "image");
         onGenerate(permanentUrl);
         toast.success("Image generated and stored successfully");
       } else if (fieldType === "video") {
-        const videoUrl = data.videoUrl || data.video_url || data.url;
-        if (!videoUrl) {
-          throw new Error("No video URL returned from AI generator");
+        const videoUrl = data.videoUrl || data.video_url || data.data?.videoUrl || data.url || "";
+        if (!videoUrl || typeof videoUrl !== "string" || videoUrl.trim() === "") {
+          throw new Error(`No video URL returned. Response: ${JSON.stringify(data)}`);
         }
         // If already a storage URL, use directly
         if (videoUrl.includes("supabase.co/storage")) {
           onGenerate(videoUrl);
         } else {
           setUploadProgress("Uploading video to storage...");
-          const permanentUrl = await uploadAiMediaToStorage(videoUrl, "video");
+          const permanentUrl = await uploadAiMediaToStorage(videoUrl.trim(), "video");
           onGenerate(permanentUrl);
         }
         toast.success("Video generated and stored successfully");
       } else if (fieldType === "pdf") {
-        const pdfUrl = data.pdfUrl || data.pdf_url || data.url;
-        if (!pdfUrl) {
-          throw new Error("No PDF URL returned from AI generator");
+        const pdfUrl = data.pdfUrl || data.pdf_url || data.data?.pdfUrl || data.url || "";
+        if (!pdfUrl || typeof pdfUrl !== "string" || pdfUrl.trim() === "") {
+          throw new Error(`No PDF URL returned. Response: ${JSON.stringify(data)}`);
         }
         onGenerate(pdfUrl);
         toast.success("PDF generated successfully");
