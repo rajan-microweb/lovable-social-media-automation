@@ -99,5 +99,8 @@ verify_jwt = false
 [functions.proxy-openai-generate-image]
 verify_jwt = false
 
-[functions.proxy-openai-generate-video]
+[functions.proxy-openai-start-video]
+verify_jwt = false
+
+[functions.proxy-openai-check-video]
 verify_jwt = false
