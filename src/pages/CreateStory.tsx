@@ -67,7 +67,7 @@ export default function CreateStory() {
   // AI-generated URLs
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
-  
+
   // Platform connection state
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
   const [showConnectionAlert, setShowConnectionAlert] = useState(false);
@@ -83,23 +83,23 @@ export default function CreateStory() {
   useEffect(() => {
     const fetchConnectedPlatforms = async () => {
       if (!user) return;
-      
+
       const { data } = await supabase
         .from("platform_integrations")
         .select("platform_name, credentials")
         .eq("user_id", user.id);
-      
+
       if (data) {
-        const platformNames = data.map(p => p.platform_name);
+        const platformNames = data.map((p) => p.platform_name);
         setConnectedPlatforms(platformNames);
-        const openaiIntegration = data.find(p => p.platform_name.toLowerCase() === "openai");
+        const openaiIntegration = data.find((p) => p.platform_name.toLowerCase() === "openai");
         setOpenaiConnected(!!openaiIntegration);
-        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === 'object') {
+        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === "object") {
           setOpenaiApiKey((openaiIntegration.credentials as any).api_key || "");
         }
       }
     };
-    
+
     fetchConnectedPlatforms();
   }, [user]);
 
@@ -114,28 +114,26 @@ export default function CreateStory() {
 
   // Reset selected accounts when platforms change
   useEffect(() => {
-    const validAccountIds = selectedAccountIds.filter((id) => 
-      platformAccounts.some((account) => account.id === id)
-    );
+    const validAccountIds = selectedAccountIds.filter((id) => platformAccounts.some((account) => account.id === id));
     if (validAccountIds.length !== selectedAccountIds.length) {
       setSelectedAccountIds(validAccountIds);
     }
   }, [platforms, platformAccounts]);
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
-    const isConnected = connectedPlatforms.some(p => p.toLowerCase() === platform.toLowerCase());
-    
+    const isConnected = connectedPlatforms.some((p) => p.toLowerCase() === platform.toLowerCase());
+
     if (checked && !isConnected) {
       setAlertMessage(`Please connect your ${platform} account first to select this platform.`);
       setAlertPlatform(platform);
       setShowConnectionAlert(true);
       return;
     }
-    
+
     if (checked) {
       setPlatforms([...platforms, platform.toLowerCase()]);
     } else {
-      setPlatforms(platforms.filter(p => p !== platform.toLowerCase()));
+      setPlatforms(platforms.filter((p) => p !== platform.toLowerCase()));
     }
   };
 
@@ -172,33 +170,31 @@ export default function CreateStory() {
   };
 
   const uploadFile = async (file: File, folder: string): Promise<string> => {
-    const fileExt = file.name.split('.').pop();
+    const fileExt = file.name.split(".").pop();
     const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
     const filePath = `${folder}/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('post-media')
-      .upload(filePath, file);
+    const { error: uploadError } = await supabase.storage.from("post-media").upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('post-media')
-      .getPublicUrl(filePath);
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("post-media").getPublicUrl(filePath);
 
     return publicUrl;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (connectedPlatforms.length === 0) {
       setAlertMessage("Please connect at least one social media account before creating a story.");
       setAlertPlatform("");
       setShowConnectionAlert(true);
       return;
     }
-    
+
     setLoading(true);
 
     try {
@@ -215,7 +211,7 @@ export default function CreateStory() {
         setUploading(true);
         const folder = typeOfStory === "video" ? "videos" : "images";
         const url = await uploadFile(mediaFile, folder);
-        
+
         if (typeOfStory === "video") {
           uploadedVideoUrl = url;
         } else {
@@ -231,9 +227,7 @@ export default function CreateStory() {
       }
 
       // Convert datetime-local format to ISO 8601
-      const formattedScheduledAt = scheduledAt 
-        ? new Date(scheduledAt).toISOString() 
-        : undefined;
+      const formattedScheduledAt = scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
 
       const storyData = {
         type_of_story: typeOfStory,
@@ -300,7 +294,6 @@ export default function CreateStory() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-
               <div className="space-y-2">
                 <Label htmlFor="typeOfStory">
                   Type of Story <span className="text-destructive">*</span>
@@ -326,30 +319,30 @@ export default function CreateStory() {
                     {availablePlatforms.map((platform) => {
                       const isSelected = platforms.includes(platform.toLowerCase());
                       const platformLower = platform.toLowerCase();
-                      
+
                       const getPlatformIcon = () => {
                         switch (platformLower) {
-                          case 'facebook':
+                          case "facebook":
                             return (
                               <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1877F2">
-                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                               </svg>
                             );
-                          case 'instagram':
+                          case "instagram":
                             return (
                               <svg viewBox="0 0 24 24" className="w-8 h-8">
                                 <defs>
                                   <linearGradient id="ig-gradient-create-story" x1="0%" y1="100%" x2="100%" y2="0%">
-                                    <stop offset="0%" stopColor="#FFDC80"/>
-                                    <stop offset="10%" stopColor="#FCAF45"/>
-                                    <stop offset="30%" stopColor="#F77737"/>
-                                    <stop offset="60%" stopColor="#C13584"/>
-                                    <stop offset="100%" stopColor="#833AB4"/>
+                                    <stop offset="0%" stopColor="#FFDC80" />
+                                    <stop offset="10%" stopColor="#FCAF45" />
+                                    <stop offset="30%" stopColor="#F77737" />
+                                    <stop offset="60%" stopColor="#C13584" />
+                                    <stop offset="100%" stopColor="#833AB4" />
                                   </linearGradient>
                                 </defs>
-                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-create-story)"/>
-                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5"/>
-                                <circle cx="17.5" cy="6.5" r="1.5" fill="white"/>
+                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-create-story)" />
+                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5" />
+                                <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
                               </svg>
                             );
                           default:
@@ -364,8 +357,8 @@ export default function CreateStory() {
                           onClick={() => handlePlatformChange(platform, !isSelected)}
                           className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all min-w-[100px] ${
                             isSelected
-                              ? 'border-primary bg-primary/5 shadow-sm'
-                              : 'border-border hover:border-muted-foreground/50 bg-card'
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border hover:border-muted-foreground/50 bg-card"
                           }`}
                         >
                           {getPlatformIcon()}
@@ -425,9 +418,7 @@ export default function CreateStory() {
                     rows={4}
                     maxLength={2000}
                   />
-                  <div className="text-xs text-muted-foreground text-right">
-                    {text.length}/2000
-                  </div>
+                  <div className="text-xs text-muted-foreground text-right">{text.length}/2000</div>
                 </div>
               )}
 
@@ -460,52 +451,38 @@ export default function CreateStory() {
                     accept={typeOfStory === "video" ? "video/*" : "image/*"}
                     required={showMediaUpload && !imageUrl && !videoUrl}
                   />
-                  {mediaFile && (
-                    <p className="text-sm text-muted-foreground">
-                      Selected: {mediaFile.name}
-                    </p>
-                  )}
-                  
+                  {mediaFile && <p className="text-sm text-muted-foreground">Selected: {mediaFile.name}</p>}
+
                   {/* Media Preview */}
                   {(mediaFile || imageUrl || videoUrl) && (
                     <div className="mt-3 p-3 border rounded-lg bg-muted/30">
                       <p className="text-sm font-medium mb-2">Preview:</p>
-                      
+
                       {typeOfStory === "image" && (
                         <>
                           {mediaFile && (
-                            <img 
-                              src={URL.createObjectURL(mediaFile)} 
-                              alt="Preview" 
+                            <img
+                              src={URL.createObjectURL(mediaFile)}
+                              alt="Preview"
                               className="max-h-48 rounded-md object-contain"
                             />
                           )}
                           {imageUrl && (
-                            <img 
-                              src={imageUrl} 
-                              alt="AI Generated Preview" 
+                            <img
+                              src={imageUrl}
+                              alt="AI Generated Preview"
                               className="max-h-48 rounded-md object-contain"
                             />
                           )}
                         </>
                       )}
-                      
+
                       {typeOfStory === "video" && (
                         <>
                           {mediaFile && (
-                            <video 
-                              src={URL.createObjectURL(mediaFile)} 
-                              controls 
-                              className="max-h-48 rounded-md"
-                            />
+                            <video src={URL.createObjectURL(mediaFile)} controls className="max-h-48 rounded-md" />
                           )}
-                          {videoUrl && (
-                            <video 
-                              src={videoUrl} 
-                              controls 
-                              className="max-h-48 rounded-md"
-                            />
-                          )}
+                          {videoUrl && <video src={videoUrl} controls className="max-h-48 rounded-md" />}
                         </>
                       )}
                     </div>
@@ -527,7 +504,6 @@ export default function CreateStory() {
                       <SelectContent>
                         <SelectItem value="draft">Draft</SelectItem>
                         <SelectItem value="scheduled">Scheduled</SelectItem>
-                        <SelectItem value="published">Published</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -550,11 +526,7 @@ export default function CreateStory() {
               {/* Submit Buttons */}
               {typeOfStory && (
                 <div className="flex gap-4">
-                  <Button
-                    type="submit"
-                    disabled={loading || uploading}
-                    className="flex-1"
-                  >
+                  <Button type="submit" disabled={loading || uploading} className="flex-1">
                     {loading ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -569,11 +541,7 @@ export default function CreateStory() {
                       "Create Story"
                     )}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => navigate("/stories")}
-                  >
+                  <Button type="button" variant="outline" onClick={() => navigate("/stories")}>
                     Cancel
                   </Button>
                 </div>
@@ -599,14 +567,10 @@ export default function CreateStory() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
-            <AlertDialogDescription>
-              {alertMessage}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => navigate("/accounts")}>
-              Go to Accounts
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -620,9 +584,7 @@ export default function CreateStory() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => navigate("/accounts")}>
-              Go to Accounts
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
