@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
+import { PostCard } from "@/components/posts/PostCard";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -334,82 +335,13 @@ export default function Posts() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredPosts.map((post) => (
-              <Card
+              <PostCard
                 key={post.id}
-                className={`relative transition-all ${
-                  selectedIds.has(post.id)
-                    ? "ring-2 ring-primary"
-                    : "hover:shadow-md"
-                }`}
-              >
-                <CardHeader>
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={selectedIds.has(post.id)}
-                      onCheckedChange={() => toggleSelection(post.id)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1 flex items-start justify-between">
-                      <CardTitle className="text-lg">{post.title || "Untitled"}</CardTitle>
-                      <Badge className={getStatusColor(post.status)}>
-                        {post.status}
-                      </Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {post.type_of_post && (
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-semibold">Type:</span> {post.type_of_post}
-                    </p>
-                  )}
-                  {post.platforms && post.platforms.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-semibold">Platforms:</span> {post.platforms.join(", ")}
-                    </p>
-                  )}
-                  {post.text && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {post.text}
-                    </p>
-                  )}
-                  {post.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {post.description}
-                    </p>
-                  )}
-                  {post.tags && post.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {post.tags.map((tag, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  {post.scheduled_at && (
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-semibold">Scheduled:</span> {format(new Date(post.scheduled_at), "PPp")}
-                    </p>
-                  )}
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => navigate(`/posts/${post.id}/edit`)}
-                    >
-                      <Edit className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDelete(post.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                post={post}
+                isSelected={selectedIds.has(post.id)}
+                onToggleSelect={() => toggleSelection(post.id)}
+                onDelete={handleDelete}
+              />
             ))}
           </div>
         )}
