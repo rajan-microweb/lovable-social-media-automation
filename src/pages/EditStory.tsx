@@ -659,6 +659,9 @@ export default function EditStory() {
           userId: user?.id,
           platforms: platforms,
           typeOfPost: typeOfStory,
+          existingImageUrl: imageUrl,
+          existingVideoUrl: videoUrl,
+          existingTextContent: text,
         }}
       />
 

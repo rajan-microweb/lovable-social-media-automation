@@ -2,10 +2,10 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Loader2, ArrowLeft, FileText, Image, Video, Wand2, Type, Film, Check,
+  AlertCircle, ImageIcon, VideoIcon,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
@@ -22,6 +22,10 @@ interface AiContext {
   typeOfStory?: string;
   title?: string;
   description?: string;
+  // Existing form content for auto-detection
+  existingImageUrl?: string;
+  existingVideoUrl?: string;
+  existingTextContent?: string;
 }
 
 interface AiPromptModalProps {
@@ -42,88 +46,110 @@ type SubOptionKey =
   | "video:prompt"
   | "video:fromText";
 
+/** Which existing resource a sub-option depends on (if any) */
+type Dependency = "image" | "video" | "text" | null;
+
 interface SubOption {
   key: SubOptionKey;
   icon: React.ElementType;
   label: string;
   description: string;
-  inputType: "prompt" | "url" | "text";
+  /** null = needs a free-text prompt; "auto" = pulls from existing form content */
+  inputType: "prompt" | "auto";
   inputLabel: string;
   inputPlaceholder: string;
+  dependency: Dependency;
+  /** Which post types this option is valid for (undefined = all) */
+  validPostTypes?: string[];
 }
 
 // ─── Option definitions ──────────────────────────────────────────────────────
 
-const SUB_OPTIONS: Record<string, SubOption[]> = {
-  text: [
-    {
-      key: "text:prompt",
-      icon: FileText,
-      label: "Generate Text",
-      description: "Write text from a prompt",
-      inputType: "prompt",
-      inputLabel: "Your prompt",
-      inputPlaceholder: "Describe what text you want to generate...",
-    },
-    {
-      key: "text:fromImage",
-      icon: Image,
-      label: "Text from Image",
-      description: "Describe or analyse an image",
-      inputType: "url",
-      inputLabel: "Image URL",
-      inputPlaceholder: "Paste a public image URL...",
-    },
-    {
-      key: "text:fromVideo",
-      icon: Video,
-      label: "Text from Video",
-      description: "Summarise or transcribe a video",
-      inputType: "url",
-      inputLabel: "Video URL",
-      inputPlaceholder: "Paste a public video URL...",
-    },
-  ],
-  image: [
-    {
-      key: "image:prompt",
-      icon: Wand2,
-      label: "Generate Image",
-      description: "Create an image from a prompt",
-      inputType: "prompt",
-      inputLabel: "Image prompt",
-      inputPlaceholder: "Describe the image you want to create...",
-    },
-    {
-      key: "image:fromText",
-      icon: Type,
-      label: "Image from Text",
-      description: "Turn existing text into a visual",
-      inputType: "text",
-      inputLabel: "Source text",
-      inputPlaceholder: "Paste the text to convert into an image...",
-    },
-  ],
-  video: [
-    {
-      key: "video:prompt",
-      icon: Film,
-      label: "Generate Video",
-      description: "Create a video from a prompt",
-      inputType: "prompt",
-      inputLabel: "Video prompt",
-      inputPlaceholder: "Describe the video you want to create...",
-    },
-    {
-      key: "video:fromText",
-      icon: Type,
-      label: "Video from Text",
-      description: "Turn existing text into a video",
-      inputType: "text",
-      inputLabel: "Source text",
-      inputPlaceholder: "Paste the text to convert into a video...",
-    },
-  ],
+const ALL_TEXT_OPTIONS: SubOption[] = [
+  {
+    key: "text:prompt",
+    icon: FileText,
+    label: "Generate Text",
+    description: "Write text from a prompt",
+    inputType: "prompt",
+    inputLabel: "Your prompt",
+    inputPlaceholder: "Describe what text you want to generate...",
+    dependency: null,
+  },
+  {
+    key: "text:fromImage",
+    icon: Image,
+    label: "Text from Image",
+    description: "Analyse the uploaded image to write text",
+    inputType: "auto",
+    inputLabel: "Image source",
+    inputPlaceholder: "",
+    dependency: "image",
+    validPostTypes: ["image", "carousel"],
+  },
+  {
+    key: "text:fromVideo",
+    icon: Video,
+    label: "Text from Video",
+    description: "Summarise or transcribe the uploaded video",
+    inputType: "auto",
+    inputLabel: "Video source",
+    inputPlaceholder: "",
+    dependency: "video",
+    validPostTypes: ["video", "shorts"],
+  },
+];
+
+const IMAGE_OPTIONS: SubOption[] = [
+  {
+    key: "image:prompt",
+    icon: Wand2,
+    label: "Generate Image",
+    description: "Create an image from a prompt",
+    inputType: "prompt",
+    inputLabel: "Image prompt",
+    inputPlaceholder: "Describe the image you want to create...",
+    dependency: null,
+  },
+  {
+    key: "image:fromText",
+    icon: Type,
+    label: "Image from Text",
+    description: "Turn your existing post text into a visual",
+    inputType: "auto",
+    inputLabel: "Source text",
+    inputPlaceholder: "",
+    dependency: "text",
+  },
+];
+
+const VIDEO_OPTIONS: SubOption[] = [
+  {
+    key: "video:prompt",
+    icon: Film,
+    label: "Generate Video",
+    description: "Create a video from a prompt",
+    inputType: "prompt",
+    inputLabel: "Video prompt",
+    inputPlaceholder: "Describe the video you want to create...",
+    dependency: null,
+  },
+  {
+    key: "video:fromText",
+    icon: Type,
+    label: "Video from Text",
+    description: "Turn your existing post text into a video",
+    inputType: "auto",
+    inputLabel: "Source text",
+    inputPlaceholder: "",
+    dependency: "text",
+  },
+];
+
+const SUB_OPTIONS_MAP: Record<string, SubOption[]> = {
+  text: ALL_TEXT_OPTIONS,
+  image: IMAGE_OPTIONS,
+  video: VIDEO_OPTIONS,
 };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -131,6 +157,37 @@ const SUB_OPTIONS: Record<string, SubOption[]> = {
 const VIDEO_POLL_INTERVAL_MS = 10_000;
 const VIDEO_MAX_POLL_DURATION_MS = 5 * 60 * 1000;
 const CHECK_VIDEO_WEBHOOK = "https://n8n.srv1248804.hstgr.cloud/webhook/check-video-status";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function getDependencyValue(dep: Dependency, context?: AiContext): string {
+  if (!dep) return "";
+  if (dep === "image") return context?.existingImageUrl ?? "";
+  if (dep === "video") return context?.existingVideoUrl ?? "";
+  if (dep === "text") return context?.existingTextContent ?? "";
+  return "";
+}
+
+function getDependencyLabel(dep: Dependency): string {
+  if (dep === "image") return "Uploaded image";
+  if (dep === "video") return "Uploaded video";
+  if (dep === "text") return "Post text content";
+  return "";
+}
+
+function getDependencyIcon(dep: Dependency) {
+  if (dep === "image") return ImageIcon;
+  if (dep === "video") return VideoIcon;
+  if (dep === "text") return FileText;
+  return FileText;
+}
+
+function getMissingDependencyMessage(dep: Dependency): string {
+  if (dep === "image") return "Please upload or generate an image first before using this option.";
+  if (dep === "video") return "Please upload or generate a video first before using this option.";
+  if (dep === "text") return "Please enter or generate some text content first before using this option.";
+  return "Required content is missing.";
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -153,7 +210,14 @@ export function AiPromptModal({
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
 
-  const options = SUB_OPTIONS[fieldType] ?? [];
+  // Filter options based on fieldType and typeOfPost
+  const rawOptions = SUB_OPTIONS_MAP[fieldType] ?? [];
+  const typeOfPost = context?.typeOfPost ?? "";
+  const options = rawOptions.filter((opt) => {
+    if (!opt.validPostTypes) return true; // no restriction
+    if (!typeOfPost) return false;        // post type not set yet
+    return opt.validPostTypes.includes(typeOfPost);
+  });
 
   // Reset when modal opens / fieldType changes
   useEffect(() => {
@@ -220,9 +284,18 @@ export function AiPromptModal({
     }
   };
 
+  // ── Resolve the effective input value ────────────────────────────────────
+  // For "auto" options the value comes from context, not a textarea.
+
+  const resolveInputValue = (opt: SubOption): string => {
+    if (opt.inputType === "auto") return getDependencyValue(opt.dependency, context);
+    return inputValue;
+  };
+
   // ── Payload builder ──────────────────────────────────────────────────────
 
   const buildPayload = (opt: SubOption): Record<string, unknown> => {
+    const effectiveValue = resolveInputValue(opt);
     const base = {
       userId: context?.userId,
       platforms: context?.platforms,
@@ -232,13 +305,13 @@ export function AiPromptModal({
       description: context?.description,
     };
     const map: Record<SubOptionKey, Record<string, unknown>> = {
-      "text:prompt":    { textPrompt: inputValue },
-      "text:fromImage": { textFromImageUrl: inputValue },
-      "text:fromVideo": { textFromVideoUrl: inputValue },
-      "image:prompt":   { imagePrompt: inputValue },
-      "image:fromText": { imageFromText: inputValue },
-      "video:prompt":   { videoPrompt: inputValue },
-      "video:fromText": { videoFromText: inputValue },
+      "text:prompt":    { textPrompt: effectiveValue },
+      "text:fromImage": { textFromImageUrl: effectiveValue },
+      "text:fromVideo": { textFromVideoUrl: effectiveValue },
+      "image:prompt":   { imagePrompt: effectiveValue },
+      "image:fromText": { imageFromText: effectiveValue },
+      "video:prompt":   { videoPrompt: effectiveValue },
+      "video:fromText": { videoFromText: effectiveValue },
     };
     return { ...base, ...map[opt.key] };
   };
@@ -247,7 +320,18 @@ export function AiPromptModal({
 
   const handleGenerate = async () => {
     if (!selectedOption) return;
-    if (!inputValue.trim()) { toast.error("Please fill in the input field"); return; }
+
+    const effectiveValue = resolveInputValue(selectedOption);
+
+    // Validation
+    if (selectedOption.inputType === "prompt" && !inputValue.trim()) {
+      toast.error("Please fill in the prompt field");
+      return;
+    }
+    if (selectedOption.inputType === "auto" && !effectiveValue.trim()) {
+      toast.error(getMissingDependencyMessage(selectedOption.dependency));
+      return;
+    }
 
     setLoading(true);
     setUploadProgress("Generating content...");
@@ -339,6 +423,13 @@ export function AiPromptModal({
 
   const videoProgressPercent = Math.min((videoElapsed / 300) * 100, 100);
 
+  // ── Computed for step 2 ──────────────────────────────────────────────────
+
+  const depValue = selectedOption ? getDependencyValue(selectedOption.dependency, context) : "";
+  const hasDependency = selectedOption?.inputType === "auto";
+  const dependencyMissing = hasDependency && !depValue.trim();
+  const canGenerate = !loading && (hasDependency ? !dependencyMissing : inputValue.trim().length > 0);
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -371,35 +462,63 @@ export function AiPromptModal({
 
         {/* ── Step 1: Option Grid ── */}
         {step === 1 && (
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            {options.map((opt) => {
-              const Icon = opt.icon;
-              return (
-                <button
-                  key={opt.key}
-                  onClick={() => handleSelectOption(opt)}
-                  className={cn(
-                    "group relative flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-all duration-200",
-                    "hover:border-primary hover:shadow-md hover:scale-[1.02]",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    "bg-card"
-                  )}
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm leading-none">{opt.label}</p>
-                    <p className="text-xs text-muted-foreground mt-1 leading-snug">{opt.description}</p>
-                  </div>
-                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center">
-                      <Check className="h-3 w-3 text-primary" />
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+          <div className="mt-2 space-y-3">
+            {options.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
+                <AlertCircle className="h-8 w-8 opacity-40" />
+                <p className="text-sm">No generation options available for the selected post type.</p>
+                <p className="text-xs">Please select a post type first.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {options.map((opt) => {
+                  const Icon = opt.icon;
+                  const depVal = getDependencyValue(opt.dependency, context);
+                  const depMissing = opt.inputType === "auto" && !depVal.trim();
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => handleSelectOption(opt)}
+                      className={cn(
+                        "group relative flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-all duration-200",
+                        "hover:border-primary hover:shadow-md hover:scale-[1.02]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "bg-card",
+                        depMissing && "opacity-60"
+                      )}
+                    >
+                      <div className={cn(
+                        "flex h-10 w-10 items-center justify-center rounded-lg transition-colors",
+                        depMissing
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
+                      )}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm leading-none">{opt.label}</p>
+                        <p className="text-xs text-muted-foreground mt-1 leading-snug">{opt.description}</p>
+                      </div>
+                      {depMissing && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <AlertCircle className="h-3 w-3 text-destructive" />
+                          <span className="text-[10px] text-destructive leading-tight">
+                            {getDependencyLabel(opt.dependency)} required
+                          </span>
+                        </div>
+                      )}
+                      {!depMissing && (
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center">
+                            <Check className="h-3 w-3 text-primary" />
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -417,18 +536,55 @@ export function AiPromptModal({
               </div>
             </div>
 
-            {/* Input field */}
-            <div className="space-y-2">
-              <Label htmlFor="ai-input">{selectedOption.inputLabel}</Label>
-              {selectedOption.inputType === "url" ? (
-                <Input
-                  id="ai-input"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder={selectedOption.inputPlaceholder}
-                  disabled={loading}
-                />
-              ) : (
+            {/* Auto-detect source preview  */}
+            {hasDependency && (
+              <div className="space-y-2">
+                <Label>{selectedOption.inputLabel}</Label>
+                {dependencyMissing ? (
+                  <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3">
+                    <AlertCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-destructive">Required content missing</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {getMissingDependencyMessage(selectedOption.dependency)}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                    {(() => {
+                      const DepIcon = getDependencyIcon(selectedOption.dependency);
+                      return (
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 shrink-0">
+                            <DepIcon className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium text-primary mb-1">
+                              {getDependencyLabel(selectedOption.dependency)} detected ✓
+                            </p>
+                            {selectedOption.dependency === "text" ? (
+                              <p className="text-xs text-muted-foreground line-clamp-3 break-words">
+                                {depValue}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {depValue.length > 60 ? `${depValue.slice(0, 60)}…` : depValue}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Prompt input field (only for "prompt" type options) */}
+            {!hasDependency && (
+              <div className="space-y-2">
+                <Label htmlFor="ai-input">{selectedOption.inputLabel}</Label>
                 <Textarea
                   id="ai-input"
                   value={inputValue}
@@ -437,8 +593,8 @@ export function AiPromptModal({
                   placeholder={selectedOption.inputPlaceholder}
                   disabled={loading}
                 />
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Progress */}
             {uploadProgress && (
@@ -460,7 +616,12 @@ export function AiPromptModal({
               <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
                 Cancel
               </Button>
-              <Button type="button" onClick={handleGenerate} disabled={loading}>
+              <Button
+                type="button"
+                onClick={handleGenerate}
+                disabled={!canGenerate}
+                title={dependencyMissing ? getMissingDependencyMessage(selectedOption.dependency) : undefined}
+              >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Generate
               </Button>

@@ -1137,6 +1137,9 @@ export default function EditPost() {
           typeOfPost: typeOfPost,
           title: postTitle,
           description: postDescription,
+          existingImageUrl: imageUrl,
+          existingVideoUrl: videoUrl,
+          existingTextContent: textContent,
         }}
       />
 
