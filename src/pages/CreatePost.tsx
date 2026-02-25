@@ -208,6 +208,18 @@ export default function CreatePost() {
     setAiModalOpen(true);
   };
 
+  // Resolve existing media/text for AI modal context
+  const getAiContext = () => ({
+    userId: user?.id,
+    platforms,
+    typeOfPost,
+    title: postTitle,
+    description: postDescription,
+    existingImageUrl: imageUrl || (mediaFile && typeOfPost === "image" ? "" : ""),
+    existingVideoUrl: videoUrl || (mediaFile && (typeOfPost === "video" || typeOfPost === "shorts") ? "" : ""),
+    existingTextContent: textContent,
+  });
+
   const handleAiGenerate = async (content: string) => {
     if (aiModalTarget === "textContent") {
       setTextContent(content);
@@ -1159,13 +1171,7 @@ export default function CreatePost() {
         onClose={() => setAiModalOpen(false)}
         fieldType={aiModalField}
         onGenerate={handleAiGenerate}
-        context={{
-          userId: user?.id,
-          platforms: platforms,
-          typeOfPost: typeOfPost,
-          title: postTitle,
-          description: postDescription,
-        }}
+        context={getAiContext()}
       />
 
       <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>

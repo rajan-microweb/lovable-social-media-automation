@@ -560,6 +560,9 @@ export default function CreateStory() {
           userId: user?.id,
           platforms: platforms,
           typeOfPost: typeOfStory,
+          existingImageUrl: imageUrl,
+          existingVideoUrl: videoUrl,
+          existingTextContent: text,
         }}
       />
 
