@@ -1,118 +1,105 @@
 
+# Plan: Enhanced AI Generation Modal with Sub-Options
 
-# Plan: Async Video Generation with Polling
+## Overview
+Replace the single-prompt modal with a two-step, icon-based modal. Step 1 shows selectable generation sub-options (cards with icons). Step 2 shows the relevant input (prompt textarea, or an existing media URL field). The n8n webhook payload fields are extended to support new source types.
 
-## Problem
-The `proxy-openai-generate-video` edge function polls OpenAI for up to 5 minutes (20 attempts x 15s), but edge functions have a 60-second timeout. This causes a 504 timeout error every time video generation is attempted.
+## N8N Workflow Compatibility
 
-## Solution
-Split the video workflow into two phases: **start job** (returns immediately) and **check status** (called repeatedly by the frontend). The ChatGPT advice is correct -- we need an async job system.
+The current workflow Switch node detects fields:
+- `textPrompt` → TEXT branch
+- `imagePrompt` → IMAGE branch
+- `videoPrompt` → VIDEO branch
 
-## Architecture
+New payload fields to add for new sub-options (the Switch will need new cases added manually, or we can merge into existing cases using additional fields):
 
-```text
-Frontend (AiPromptModal)
-  |
-  |-- POST /ai-content-generator (videoPrompt)
-  |       |
-  |       n8n --> proxy-openai-start-video (returns jobId in ~2s)
-  |       n8n --> responds { jobId, status: "processing" }
-  |
-  |-- Poll every 10s: POST /ai-content-generator or direct edge fn
-  |       |
-  |       proxy-openai-check-video (jobId) --> checks OpenAI status
-  |       If completed --> downloads binary, uploads to storage, returns videoUrl
-  |       If processing --> returns { status: "processing" }
-  |
-  |-- When videoUrl received --> onGenerate(videoUrl)
-```
+| Sub-option | New field sent | Action needed in n8n |
+|---|---|---|
+| Generate Text from Image | `textFromImageUrl` | Add new Switch case |
+| Generate Text from Video | `textFromVideoUrl` | Add new Switch case |
+| Generate Image from Text | `imageFromText` | Add new Switch case |
+| Generate Video from Text | `videoFromText` | Add new Switch case |
 
-## Changes Required
+You will need to add 4 new Switch cases and corresponding HTTP nodes + Respond nodes in your n8n workflow after this frontend change.
 
-### 1. New Edge Function: `proxy-openai-start-video`
-**File:** `supabase/functions/proxy-openai-start-video/index.ts`
+## Changes to `AiPromptModal.tsx`
 
-- Accepts `{ user_id, videoPrompt }`
-- Decrypts OpenAI key, calls `POST /v1/videos` to start job
-- Returns `{ jobId, status: "processing" }` immediately (no polling)
-- Responds in under 5 seconds -- no timeout risk
+The component is completely redesigned with two internal "steps":
 
-### 2. New Edge Function: `proxy-openai-check-video`
-**File:** `supabase/functions/proxy-openai-check-video/index.ts`
+### Step 1 — Option Selection
+A grid of cards with icon + label, filtered by `fieldType` prop:
 
-- Accepts `{ user_id, jobId }`
-- Decrypts OpenAI key, calls `GET /v1/videos/{jobId}` to check status
-- If `completed`: fetches `/content`, handles binary upload to storage, returns `{ status: "completed", videoUrl }`
-- If `processing`/`pending`: returns `{ status: "processing" }`
-- If `failed`: returns `{ status: "failed", error }` 
-- Each call takes only a few seconds -- no timeout risk
+**Text options:**
+- 📝 Generate Text (icon: `FileText`) → shows prompt textarea
+- 🖼️ Generate Text from Image (icon: `Image`) → shows image URL input
+- 🎥 Generate Text from Video (icon: `Video`) → shows video URL input
 
-### 3. Remove Old Function: `proxy-openai-generate-video`
-Delete `supabase/functions/proxy-openai-generate-video/index.ts` and its config entry since it will be fully replaced by the two new functions.
+**Image options:**
+- 🎨 Generate Image (icon: `Wand2`) → shows prompt textarea
+- 🔤 Generate Image from Text (icon: `Type`) → shows text textarea
 
-### 4. Update `supabase/config.toml`
-- Remove `[functions.proxy-openai-generate-video]`
-- Add `[functions.proxy-openai-start-video]` with `verify_jwt = false`
-- Add `[functions.proxy-openai-check-video]` with `verify_jwt = false`
+**Video options:**
+- 🎬 Generate Video (icon: `Film`) → shows prompt textarea
+- 🔤 Generate Video from Text (icon: `Type`) → shows text textarea
 
-### 5. Update Frontend: `AiPromptModal.tsx`
-Modify the video generation branch to use a two-phase approach:
+### Step 2 — Input & Generate
+Based on chosen sub-option, shows either:
+- **Prompt textarea** (for "Generate X" options)
+- **URL input field** (for "from Image/Video" options)
+- **Text textarea** (for "from Text" options)
 
-**Phase 1 -- Start:** Call n8n webhook with `videoPrompt`, receive `{ jobId, status: "processing" }`
+A back arrow lets users return to Step 1 to pick a different option.
 
-**Phase 2 -- Poll:** Every 10 seconds, call a second n8n webhook (or directly call the check edge function) with the `jobId`. Show progress like "Generating video... (30s elapsed)". When `status === "completed"`, use the returned `videoUrl`.
+## Payload Structure Changes
 
-The modal stays open with a progress indicator during polling. Max polling duration: 5 minutes with a timeout message.
-
-### 6. n8n Workflow Changes (Manual)
-You will need to update your n8n workflow:
-
-- **VIDEO branch**: Change the HTTP Request node to call `proxy-openai-start-video` instead of `proxy-openai-generate-video`. Update "Respond to Webhook" to return `{ jobId, status }` instead of `{ videoUrl }`.
-- **New workflow**: Create a second webhook at `/check-video-status` that calls `proxy-openai-check-video` with the `jobId` and returns the result.
-
----
-
-## Technical Details
-
-### `proxy-openai-start-video/index.ts`
 ```typescript
-// Validates API key, decrypts OpenAI key
-// POST https://api.openai.com/v1/videos { model: "sora-2", prompt, size: "720x1280" }
-// Returns: { success: true, data: { jobId: response.id, status: "processing" } }
+// Sub-option → payload field mapping
+const PAYLOAD_FIELD_MAP = {
+  // Text
+  "text:prompt":        { textPrompt: prompt },
+  "text:fromImage":     { textFromImageUrl: inputValue },
+  "text:fromVideo":     { textFromVideoUrl: inputValue },
+  // Image
+  "image:prompt":       { imagePrompt: prompt },
+  "image:fromText":     { imageFromText: inputValue },
+  // Video
+  "video:prompt":       { videoPrompt: prompt },
+  "video:fromText":     { videoFromText: inputValue },
+}
 ```
 
-### `proxy-openai-check-video/index.ts`
-```typescript
-// Validates API key, decrypts OpenAI key
-// GET https://api.openai.com/v1/videos/{jobId}
-// If completed:
-//   GET /v1/videos/{jobId}/content (redirect: "manual")
-//   Handle redirect URL / JSON URL / raw binary upload to storage
-//   Returns: { success: true, data: { status: "completed", videoUrl } }
-// If processing:
-//   Returns: { success: true, data: { status: "processing" } }
-// If failed:
-//   Returns: { success: true, data: { status: "failed" } }
-```
+## Response Handling
 
-### Frontend Polling Logic (AiPromptModal.tsx)
-```typescript
-// Video branch:
-// 1. POST to n8n webhook -> get { jobId, status }
-// 2. setInterval every 10s -> call check-video-status webhook
-// 3. Show elapsed time in progress text
-// 4. On "completed" -> clearInterval, use videoUrl
-// 5. On "failed" or timeout (5 min) -> clearInterval, show error
-```
+The modal already handles `data.text`, `data.imageUrl`, and `data.jobId`+polling for video. New sub-options will return the same response shapes:
+- Text-from-image/video → `{ text: "..." }` (same handler)
+- Image-from-text → `{ imageUrl: "..." }` (same handler)
+- Video-from-text → `{ jobId, status }` → polling (same handler)
 
-### Files Created
-- `supabase/functions/proxy-openai-start-video/index.ts`
-- `supabase/functions/proxy-openai-check-video/index.ts`
+No change needed to existing response/polling logic.
 
-### Files Modified
-- `src/components/AiPromptModal.tsx` (async polling for video)
-- `supabase/config.toml` (add new functions, remove old)
+## Design Details
 
-### Files Deleted
-- `supabase/functions/proxy-openai-generate-video/index.ts`
+- **Step 1**: 2-column icon card grid, each card has large icon, title, subtle description. Selected card gets a highlighted border (primary color ring). Hover animation (scale + shadow).
+- **Step 2**: Input area slides in with a fade/slide animation. Back button (←) in top-left of dialog. Submit button is "Generate" with spinner when loading.
+- Modal width: `sm:max-w-lg` (slightly wider for option grid)
+- Step indicator shown as dots or "Step 1/2" text
 
+## Files Modified
+
+- **`src/components/AiPromptModal.tsx`** — Complete redesign with step-based UI, option cards, and new payload fields
+
+## N8N Updates Required (Manual)
+
+After this frontend change, you must add these nodes to your n8n workflow:
+
+1. **4 new Switch cases** checking for:
+   - `$json.body.textFromImageUrl`
+   - `$json.body.textFromVideoUrl`
+   - `$json.body.imageFromText`
+   - `$json.body.videoFromText`
+
+2. **4 new HTTP Request nodes** calling your Supabase proxies with the corresponding inputs
+
+3. **4 new Respond to Webhook nodes** returning the same shapes (`{ text }`, `{ imageUrl }`, `{ jobId, status }`)
+
+The existing TEXT/IMAGE/VIDEO branches remain completely unchanged.
