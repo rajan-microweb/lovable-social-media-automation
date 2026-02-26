@@ -172,7 +172,7 @@ export default function CreateStory() {
   const uploadFile = async (file: File, folder: string): Promise<string> => {
     const fileExt = file.name.split(".").pop();
     const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-    const filePath = `${folder}/${fileName}`;
+    const filePath = `${user?.id}/${folder}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage.from("post-media").upload(filePath, file);
 

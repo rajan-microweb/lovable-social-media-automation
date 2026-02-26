@@ -17,7 +17,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { externalUrl, mediaType } = await req.json();
+    const { externalUrl, mediaType, userId } = await req.json();
 
     if (!externalUrl) {
       return new Response(
@@ -75,7 +75,8 @@ serve(async (req) => {
     const timestamp = Date.now();
     const randomId = crypto.randomUUID().split("-")[0];
     const folder = mediaType === "image" ? "ai-images" : "ai-videos";
-    const filePath = `${folder}/${randomId}-${timestamp}.${extension}`;
+    const userPrefix = userId ? `${userId}/` : "";
+    const filePath = `${userPrefix}${folder}/${randomId}-${timestamp}.${extension}`;
 
     console.log(`Uploading to storage: ${filePath}`);
 
