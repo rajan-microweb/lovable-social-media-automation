@@ -12,9 +12,10 @@ export async function uploadMediaFromUrl(
 ): Promise<string> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
     
     const response = await supabase.functions.invoke("upload-ai-media", {
-      body: { externalUrl, mediaType, bucket },
+      body: { externalUrl, mediaType, bucket, userId },
     });
 
     if (response.error) {
@@ -42,8 +43,11 @@ export async function uploadBase64ToStorage(
   bucket: string = "post-media"
 ): Promise<string> {
   try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    
     const response = await supabase.functions.invoke("upload-ai-media", {
-      body: { externalUrl: base64DataUrl, mediaType, bucket },
+      body: { externalUrl: base64DataUrl, mediaType, bucket, userId },
     });
 
     if (response.error) {
