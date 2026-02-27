@@ -1137,8 +1137,8 @@ export default function EditPost() {
           typeOfPost: typeOfPost,
           title: postTitle,
           description: postDescription,
-          existingImageUrl: imageUrl,
-          existingVideoUrl: videoUrl,
+          existingImageUrl: imageUrl || (mediaFile && typeOfPost === "image" ? URL.createObjectURL(mediaFile) : ""),
+          existingVideoUrl: videoUrl || (mediaFile && (typeOfPost === "video" || typeOfPost === "shorts") ? URL.createObjectURL(mediaFile) : ""),
           existingTextContent: textContent,
         }}
       />
