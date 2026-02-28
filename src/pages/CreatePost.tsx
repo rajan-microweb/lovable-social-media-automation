@@ -99,10 +99,11 @@ export default function CreatePost() {
   const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [showOpenAIAlert, setShowOpenAIAlert] = useState(false);
 
-  // AI-generated URLs
+  // Media URLs (both uploaded and AI-generated stored in bucket)
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
+  const [mediaUploading, setMediaUploading] = useState(false);
 
   // Carousel state - multiple images
   const [carouselImages, setCarouselImages] = useState<string[]>([]);
@@ -208,15 +209,44 @@ export default function CreatePost() {
     setAiModalOpen(true);
   };
 
-  // Resolve existing media/text for AI modal context
+  // Auto-upload file to bucket immediately when selected
+  const handleMediaFileChange = async (file: File) => {
+    setMediaFile(file);
+    setImageUrl("");
+    setVideoUrl("");
+    setPdfUrl("");
+
+    let folder = "";
+    if (typeOfPost === "image") folder = "images";
+    else if (typeOfPost === "video" || typeOfPost === "shorts") folder = "videos";
+    else if (typeOfPost === "pdf") folder = "pdfs";
+
+    if (!folder) return;
+
+    setMediaUploading(true);
+    try {
+      const url = await uploadFile(file, folder);
+      if (typeOfPost === "image") setImageUrl(url);
+      else if (typeOfPost === "video" || typeOfPost === "shorts") setVideoUrl(url);
+      else if (typeOfPost === "pdf") setPdfUrl(url);
+      toast.success("File uploaded to storage");
+    } catch (err) {
+      toast.error("Failed to upload file. Please try again.");
+      console.error(err);
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  // Resolve existing media/text for AI modal context (always bucket URLs)
   const getAiContext = () => ({
     userId: user?.id,
     platforms,
     typeOfPost,
     title: postTitle,
     description: postDescription,
-    existingImageUrl: imageUrl || (mediaFile && typeOfPost === "image" ? URL.createObjectURL(mediaFile) : ""),
-    existingVideoUrl: videoUrl || (mediaFile && (typeOfPost === "video" || typeOfPost === "shorts") ? URL.createObjectURL(mediaFile) : ""),
+    existingImageUrl: imageUrl,
+    existingVideoUrl: videoUrl,
     existingTextContent: textContent,
   });
 
@@ -284,15 +314,15 @@ export default function CreatePost() {
     setUploading(true);
 
     try {
-      // Check for AI-generated URLs first, otherwise upload file if present
+      // Files are pre-uploaded on select; use stored bucket URLs directly
       let uploadedUrl = null;
       let thumbnailUrl = null;
 
       // Handle carousel separately - multiple images stored as comma-separated URLs
       if (typeOfPost === "carousel") {
-        const allCarouselUrls: string[] = [...carouselImages]; // AI-generated URLs
+        const allCarouselUrls: string[] = [...carouselImages];
 
-        // Upload any files that were selected
+        // Upload any carousel files not yet uploaded
         for (const file of carouselFiles) {
           const url = await uploadFile(file, "images");
           allCarouselUrls.push(url);
@@ -314,26 +344,13 @@ export default function CreatePost() {
 
         uploadedUrl = allCarouselUrls.join(",");
       } else if (imageUrl || videoUrl || pdfUrl) {
-        // Priority: AI URLs over file uploads for non-carousel
+        // Use the already-stored bucket URL
         if (typeOfPost === "image") {
           uploadedUrl = imageUrl;
         } else if (typeOfPost === "video" || typeOfPost === "shorts") {
           uploadedUrl = videoUrl;
         } else if (typeOfPost === "pdf") {
           uploadedUrl = pdfUrl;
-        }
-      } else if (mediaFile) {
-        let folder = "";
-        if (typeOfPost === "image") {
-          folder = "images";
-        } else if (typeOfPost === "video" || typeOfPost === "shorts") {
-          folder = "videos";
-        } else if (typeOfPost === "pdf") {
-          folder = "pdfs";
-        }
-
-        if (folder) {
-          uploadedUrl = await uploadFile(mediaFile, folder);
         }
       }
 
@@ -899,79 +916,54 @@ export default function CreatePost() {
                         }
                         onChange={(e) => {
                           if (e.target.files && e.target.files.length > 0) {
-                            setMediaFile(e.target.files[0]);
-                            setImageUrl("");
-                            setVideoUrl("");
-                            setPdfUrl("");
+                            handleMediaFileChange(e.target.files[0]);
                           }
                         }}
                         className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
                       />
-                      {mediaFile && <p className="text-sm text-muted-foreground mt-1">Selected: {mediaFile.name}</p>}
+                      {mediaUploading && (
+                        <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Uploading to storage…</span>
+                        </div>
+                      )}
+                      {mediaFile && !mediaUploading && <p className="text-sm text-muted-foreground mt-1">Selected: {mediaFile.name}</p>}
+                      {(imageUrl || videoUrl || pdfUrl) && !mediaUploading && (
+                        <p className="text-xs text-primary mt-1 truncate">✓ Stored: {(imageUrl || videoUrl || pdfUrl).split("/").pop()}</p>
+                      )}
 
                       {/* Media Preview */}
-                      {(mediaFile || imageUrl || videoUrl || pdfUrl) && (
+                      {(imageUrl || videoUrl || pdfUrl) && !mediaUploading && (
                         <div className="mt-3 p-3 border rounded-lg bg-muted/30">
                           <p className="text-sm font-medium mb-2">Preview:</p>
 
-                          {typeOfPost === "image" && (
-                            <>
-                              {mediaFile && (
-                                <img
-                                  src={URL.createObjectURL(mediaFile)}
-                                  alt="Preview"
-                                  className="max-h-48 rounded-md object-contain"
-                                />
-                              )}
-                              {imageUrl && (
-                                <img
-                                  src={imageUrl}
-                                  alt="AI Generated Preview"
-                                  className="max-h-48 rounded-md object-contain"
-                                />
-                              )}
-                            </>
+                          {typeOfPost === "image" && imageUrl && (
+                            <img
+                              src={imageUrl}
+                              alt="Preview"
+                              className="max-h-48 rounded-md object-contain"
+                            />
                           )}
 
-                          {(typeOfPost === "video" || typeOfPost === "shorts") && (
-                            <>
-                              {mediaFile && (
-                                <video src={URL.createObjectURL(mediaFile)} controls className="max-h-48 rounded-md" />
-                              )}
-                              {videoUrl && <video src={videoUrl} controls className="max-h-48 rounded-md" />}
-                            </>
+                          {(typeOfPost === "video" || typeOfPost === "shorts") && videoUrl && (
+                            <video src={videoUrl} controls className="max-h-48 rounded-md" />
                           )}
 
-                          {typeOfPost === "pdf" && (
-                            <>
-                              {mediaFile && (
-                                <div className="flex items-center gap-2 p-3 bg-background rounded-md">
-                                  <div className="text-2xl">📄</div>
-                                  <div>
-                                    <p className="text-sm font-medium">{mediaFile.name}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {(mediaFile.size / 1024).toFixed(2)} KB
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
-                              {pdfUrl && (
-                                <div className="flex items-center gap-2 p-3 bg-background rounded-md">
-                                  <div className="text-2xl">📄</div>
-                                  <div>
-                                    <p className="text-sm font-medium">AI Generated PDF</p>
-                                    <a
-                                      href={pdfUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-primary hover:underline"
-                                    >
-                                      View PDF
-                                    </a>
-                                  </div>
-                                </div>
-                              )}
-                            </>
+                          {typeOfPost === "pdf" && pdfUrl && (
+                            <div className="flex items-center gap-2 p-3 bg-background rounded-md">
+                              <div className="text-2xl">📄</div>
+                              <div>
+                                <p className="text-sm font-medium">{mediaFile?.name || "PDF File"}</p>
+                                <a
+                                  href={pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  View PDF
+                                </a>
+                              </div>
+                            </div>
                           )}
                         </div>
                       )}

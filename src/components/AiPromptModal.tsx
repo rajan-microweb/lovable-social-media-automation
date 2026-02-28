@@ -54,10 +54,12 @@ interface SubOption {
   icon: React.ElementType;
   label: string;
   description: string;
-  /** null = needs a free-text prompt; "auto" = pulls from existing form content */
-  inputType: "prompt" | "auto";
+  /** null = needs a free-text prompt; "auto" = pulls from existing form content; "mixed" = auto URL + prompt textarea */
+  inputType: "prompt" | "auto" | "mixed";
   inputLabel: string;
   inputPlaceholder: string;
+  promptLabel?: string;
+  promptPlaceholder?: string;
   dependency: Dependency;
   /** Which post types this option is valid for (undefined = all) */
   validPostTypes?: string[];
@@ -81,9 +83,11 @@ const ALL_TEXT_OPTIONS: SubOption[] = [
     icon: Image,
     label: "Text from Image",
     description: "Analyse the uploaded image to write text",
-    inputType: "auto",
+    inputType: "mixed",
     inputLabel: "Image source",
     inputPlaceholder: "",
+    promptLabel: "Instructions (optional)",
+    promptPlaceholder: "e.g. Write a caption with a professional tone and 3 hashtags",
     dependency: "image",
     validPostTypes: ["image", "carousel"],
   },
@@ -92,9 +96,11 @@ const ALL_TEXT_OPTIONS: SubOption[] = [
     icon: Video,
     label: "Text from Video",
     description: "Summarise or transcribe the uploaded video",
-    inputType: "auto",
+    inputType: "mixed",
     inputLabel: "Video source",
     inputPlaceholder: "",
+    promptLabel: "Instructions (optional)",
+    promptPlaceholder: "e.g. Summarise this video in a short engaging caption",
     dependency: "video",
     validPostTypes: ["video", "shorts"],
   },
@@ -284,18 +290,29 @@ export function AiPromptModal({
     }
   };
 
-  // ── Resolve the effective input value ────────────────────────────────────
-  // For "auto" options the value comes from context, not a textarea.
-
+  // For "auto"/"mixed" options the URL comes from context, not a textarea.
   const resolveInputValue = (opt: SubOption): string => {
-    if (opt.inputType === "auto") return getDependencyValue(opt.dependency, context);
+    if (opt.inputType === "auto" || opt.inputType === "mixed") return getDependencyValue(opt.dependency, context);
     return inputValue;
   };
 
   // ── Payload builder ──────────────────────────────────────────────────────
 
+  const GENERATION_TYPE_MAP: Record<SubOptionKey, string> = {
+    "text:prompt":    "text",
+    "text:fromImage": "textFromImage",
+    "text:fromVideo": "textFromVideo",
+    "image:prompt":   "image",
+    "image:fromText": "imageFromText",
+    "video:prompt":   "video",
+    "video:fromText": "videoFromText",
+  };
+
   const buildPayload = (opt: SubOption): Record<string, unknown> => {
-    const effectiveValue = resolveInputValue(opt);
+    const mediaUrl = (opt.inputType === "auto" || opt.inputType === "mixed")
+      ? getDependencyValue(opt.dependency, context)
+      : undefined;
+    const prompt = opt.inputType === "mixed" ? inputValue : undefined;
     const base = {
       userId: context?.userId,
       platforms: context?.platforms,
@@ -303,15 +320,16 @@ export function AiPromptModal({
       typeOfStory: context?.typeOfStory,
       title: context?.title,
       description: context?.description,
+      generationType: GENERATION_TYPE_MAP[opt.key],
     };
     const map: Record<SubOptionKey, Record<string, unknown>> = {
-      "text:prompt":    { textPrompt: effectiveValue },
-      "text:fromImage": { textFromImageUrl: effectiveValue },
-      "text:fromVideo": { textFromVideoUrl: effectiveValue },
-      "image:prompt":   { imagePrompt: effectiveValue },
-      "image:fromText": { imageFromText: effectiveValue },
-      "video:prompt":   { videoPrompt: effectiveValue },
-      "video:fromText": { videoFromText: effectiveValue },
+      "text:prompt":    { textPrompt: inputValue },
+      "text:fromImage": { mediaUrl, prompt: prompt || undefined },
+      "text:fromVideo": { mediaUrl, prompt: prompt || undefined },
+      "image:prompt":   { imagePrompt: inputValue },
+      "image:fromText": { text: mediaUrl },
+      "video:prompt":   { videoPrompt: inputValue },
+      "video:fromText": { text: mediaUrl },
     };
     return { ...base, ...map[opt.key] };
   };
@@ -328,7 +346,7 @@ export function AiPromptModal({
       toast.error("Please fill in the prompt field");
       return;
     }
-    if (selectedOption.inputType === "auto" && !effectiveValue.trim()) {
+    if ((selectedOption.inputType === "auto" || selectedOption.inputType === "mixed") && !effectiveValue.trim()) {
       toast.error(getMissingDependencyMessage(selectedOption.dependency));
       return;
     }
@@ -426,9 +444,12 @@ export function AiPromptModal({
   // ── Computed for step 2 ──────────────────────────────────────────────────
 
   const depValue = selectedOption ? getDependencyValue(selectedOption.dependency, context) : "";
-  const hasDependency = selectedOption?.inputType === "auto";
+  const hasDependency = selectedOption?.inputType === "auto" || selectedOption?.inputType === "mixed";
   const dependencyMissing = hasDependency && !depValue.trim();
-  const canGenerate = !loading && (hasDependency ? !dependencyMissing : inputValue.trim().length > 0);
+  // "mixed" = dependency URL required, prompt is optional; "prompt" = inputValue required; "auto" = URL required
+  const canGenerate = !loading && !dependencyMissing && (
+    selectedOption?.inputType === "prompt" ? inputValue.trim().length > 0 : true
+  );
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -536,7 +557,7 @@ export function AiPromptModal({
               </div>
             </div>
 
-            {/* Auto-detect source preview  */}
+            {/* Auto-detect source preview */}
             {hasDependency && (
               <div className="space-y-2">
                 <Label>{selectedOption.inputLabel}</Label>
@@ -581,8 +602,25 @@ export function AiPromptModal({
               </div>
             )}
 
+            {/* "mixed" type: show URL preview + optional prompt textarea */}
+            {selectedOption.inputType === "mixed" && !dependencyMissing && (
+              <div className="space-y-2">
+                <Label htmlFor="ai-mixed-prompt">
+                  {selectedOption.promptLabel ?? "Instructions (optional)"}
+                </Label>
+                <Textarea
+                  id="ai-mixed-prompt"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  rows={3}
+                  placeholder={selectedOption.promptPlaceholder ?? "Add specific instructions (tone, style, length)…"}
+                  disabled={loading}
+                />
+              </div>
+            )}
+
             {/* Prompt input field (only for "prompt" type options) */}
-            {!hasDependency && (
+            {selectedOption.inputType === "prompt" && (
               <div className="space-y-2">
                 <Label htmlFor="ai-input">{selectedOption.inputLabel}</Label>
                 <Textarea
