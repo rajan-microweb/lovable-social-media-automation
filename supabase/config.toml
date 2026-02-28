@@ -2,3 +2,9 @@ project_id = "fcfdyivyjidzqjtanalq"
 
 [functions.get-platform-activity]
 verify_jwt = false
+
+[functions.proxy-openai-text-from-image]
+verify_jwt = false
+
+[functions.proxy-openai-text-from-video]
+verify_jwt = false
