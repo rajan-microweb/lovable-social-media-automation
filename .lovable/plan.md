@@ -1,105 +1,122 @@
+# Plan: Add Vision AI Capabilities (Image-to-Text & Video-to-Text)
 
-# Plan: Enhanced AI Generation Modal with Sub-Options
+## Current State Analysis
 
-## Overview
-Replace the single-prompt modal with a two-step, icon-based modal. Step 1 shows selectable generation sub-options (cards with icons). Step 2 shows the relevant input (prompt textarea, or an existing media URL field). The n8n webhook payload fields are extended to support new source types.
+The uploaded n8n workflow (`AI_Content_Generator_~_SMA_2.json`) already has a Switch node with 7 cases including `textFromImage` and `textFromVideo`, but those two branches are **unconnected** — they route to empty arrays `[]` in the connections map. The frontend (`AiPromptModal.tsx`) already sends `generationType: "textFromImage"` and `generationType: "textFromVideo"` in payloads, but there are no Supabase edge functions to handle them yet.
 
-## N8N Workflow Compatibility
+## What Needs to Be Built
 
-The current workflow Switch node detects fields:
-- `textPrompt` → TEXT branch
-- `imagePrompt` → IMAGE branch
-- `videoPrompt` → VIDEO branch
+### 1. Two New Supabase Edge Functions
 
-New payload fields to add for new sub-options (the Switch will need new cases added manually, or we can merge into existing cases using additional fields):
+`**proxy-openai-text-from-image**`— Image Analysis (Image → Text)
 
-| Sub-option | New field sent | Action needed in n8n |
-|---|---|---|
-| Generate Text from Image | `textFromImageUrl` | Add new Switch case |
-| Generate Text from Video | `textFromVideoUrl` | Add new Switch case |
-| Generate Image from Text | `imageFromText` | Add new Switch case |
-| Generate Video from Text | `videoFromText` | Add new Switch case |
+- Receives: `user_id`, `imageUrl`, `prompt` (optional)
+- Fetches the user's OpenAI API key from encrypted credentials
+- Calls OpenAI `gpt-4o` with vision capability (multimodal: image + text)
+- Returns: `{ text: "generated caption..." }`
 
-You will need to add 4 new Switch cases and corresponding HTTP nodes + Respond nodes in your n8n workflow after this frontend change.
+`**proxy-openai-text-from-video**`— Video Analysis (Video → Text)
 
-## Changes to `AiPromptModal.tsx`
+- Receives: `user_id`, `videoUrl`, `prompt` (optional)
+- Fetches the user's OpenAI API key from encrypted credentials
+- Calls OpenAI `gpt-4o` with the video URL via the Responses API
+- Returns: `{ text: "generated description..." }`
 
-The component is completely redesigned with two internal "steps":
+Both functions follow the exact same pattern as existing proxy functions (`proxy-openai-generate-text`, etc.) using `_shared/encryption.ts`.
 
-### Step 1 — Option Selection
-A grid of cards with icon + label, filtered by `fieldType` prop:
+### 2. n8n Workflow Updates (Manual — Instructions Provided)
 
-**Text options:**
-- 📝 Generate Text (icon: `FileText`) → shows prompt textarea
-- 🖼️ Generate Text from Image (icon: `Image`) → shows image URL input
-- 🎥 Generate Text from Video (icon: `Video`) → shows video URL input
+The frontend already sends the correct payload. You only need to wire up the two empty Switch branches in n8n:
 
-**Image options:**
-- 🎨 Generate Image (icon: `Wand2`) → shows prompt textarea
-- 🔤 Generate Image from Text (icon: `Type`) → shows text textarea
+**Branch: "Text from IMAGE" (index 1)**
 
-**Video options:**
-- 🎬 Generate Video (icon: `Film`) → shows prompt textarea
-- 🔤 Generate Video from Text (icon: `Type`) → shows text textarea
+- Add HTTP Request node → `POST https://fcfdyivyjidzqjtanalq.supabase.co/functions/v1/proxy-openai-text-from-image`
+- Body: `user_id = {{ $('Webhook').item.json.body.userId }}`, `imageUrl = {{ $json.body.mediaUrl }}`, `prompt = {{ $json.body.prompt }}`
+- Connect to a new "Respond to Webhook" node that returns `{ "text": $json.data.text }`
 
-### Step 2 — Input & Generate
-Based on chosen sub-option, shows either:
-- **Prompt textarea** (for "Generate X" options)
-- **URL input field** (for "from Image/Video" options)
-- **Text textarea** (for "from Text" options)
+**Branch: "Text from VIDEO" (index 2)**
 
-A back arrow lets users return to Step 1 to pick a different option.
+- Add HTTP Request node → `POST https://fcfdyivyjidzqjtanalq.supabase.co/functions/v1/proxy-openai-text-from-video`
+- Body: `user_id = {{ $('Webhook').item.json.body.userId }}`, `videoUrl = {{ $json.body.mediaUrl }}`, `prompt = {{ $json.body.prompt }}`
+- Connect to a new "Respond to Webhook" node that returns `{ "text": $json.data.text }`
 
-## Payload Structure Changes
+### 3. supabase/config.toml Update
 
-```typescript
-// Sub-option → payload field mapping
-const PAYLOAD_FIELD_MAP = {
-  // Text
-  "text:prompt":        { textPrompt: prompt },
-  "text:fromImage":     { textFromImageUrl: inputValue },
-  "text:fromVideo":     { textFromVideoUrl: inputValue },
-  // Image
-  "image:prompt":       { imagePrompt: prompt },
-  "image:fromText":     { imageFromText: inputValue },
-  // Video
-  "video:prompt":       { videoPrompt: prompt },
-  "video:fromText":     { videoFromText: inputValue },
-}
+Add entries for the two new functions:
+
+```toml
+[functions.proxy-openai-text-from-image]
+verify_jwt = false
+
+[functions.proxy-openai-text-from-video]
+verify_jwt = false
 ```
 
-## Response Handling
+## Technical Details
 
-The modal already handles `data.text`, `data.imageUrl`, and `data.jobId`+polling for video. New sub-options will return the same response shapes:
-- Text-from-image/video → `{ text: "..." }` (same handler)
-- Image-from-text → `{ imageUrl: "..." }` (same handler)
-- Video-from-text → `{ jobId, status }` → polling (same handler)
+### proxy-openai-text-from-image (Image Analysis)
 
-No change needed to existing response/polling logic.
+Uses OpenAI Chat Completions with `gpt-4o` (vision-capable):
 
-## Design Details
+```typescript
+const messages = [
+  {
+    role: "user",
+    content: [
+      { type: "text", text: prompt || "Analyze this image and generate engaging social media content. Include a caption, description, and relevant hashtags." },
+      { type: "image_url", image_url: { url: imageUrl } }
+    ]
+  }
+];
+// POST to https://api.openai.com/v1/chat/completions
+// model: "gpt-4o"
+```
 
-- **Step 1**: 2-column icon card grid, each card has large icon, title, subtle description. Selected card gets a highlighted border (primary color ring). Hover animation (scale + shadow).
-- **Step 2**: Input area slides in with a fade/slide animation. Back button (←) in top-left of dialog. Submit button is "Generate" with spinner when loading.
-- Modal width: `sm:max-w-lg` (slightly wider for option grid)
-- Step indicator shown as dots or "Step 1/2" text
+Returns: `{ success: true, data: { text: "..." } }`
 
-## Files Modified
+### proxy-openai-text-from-video (Video Analysis)
 
-- **`src/components/AiPromptModal.tsx`** — Complete redesign with step-based UI, option cards, and new payload fields
+Uses OpenAI Responses API with `gpt-4o` vision for video:
 
-## N8N Updates Required (Manual)
+```typescript
+// POST to https://api.openai.com/v1/responses
+// model: "gpt-4.1"
+// input: [{ role: "user", content: [{ type: "input_text", text: prompt }, { type: "input_video", video_url: videoUrl }] }]
+```
 
-After this frontend change, you must add these nodes to your n8n workflow:
+Returns: `{ success: true, data: { text: "..." } }`
 
-1. **4 new Switch cases** checking for:
-   - `$json.body.textFromImageUrl`
-   - `$json.body.textFromVideoUrl`
-   - `$json.body.imageFromText`
-   - `$json.body.videoFromText`
+## Files to Create/Modify
 
-2. **4 new HTTP Request nodes** calling your Supabase proxies with the corresponding inputs
 
-3. **4 new Respond to Webhook nodes** returning the same shapes (`{ text }`, `{ imageUrl }`, `{ jobId, status }`)
+| File                                                       | Action                     |
+| ---------------------------------------------------------- | -------------------------- |
+| `supabase/functions/proxy-openai-text-from-image/index.ts` | Create                     |
+| `supabase/functions/proxy-openai-text-from-video/index.ts` | Create                     |
+| `supabase/config.toml`                                     | Add 2 new function entries |
 
-The existing TEXT/IMAGE/VIDEO branches remain completely unchanged.
+
+## No Frontend Changes Required
+
+The `AiPromptModal.tsx` already:
+
+- Shows "Text from Image" and "Text from Video" options correctly filtered by post type
+- Sends `generationType: "textFromImage"` / `"textFromVideo"` 
+- Sends `mediaUrl` (the bucket-stored URL) 
+- Sends optional `prompt`
+- Handles `{ text: "..." }` response correctly
+
+## n8n Manual Steps (After Deployment)
+
+Once the edge functions are deployed, you need to add two new branches to the Switch node in your n8n workflow:
+
+1. Open the "AI Content Generator ~ SMA" workflow
+2. For Switch output index 1 ("Text from IMAGE"):
+  - Add HTTP Request node calling `proxy-openai-text-from-image`with `user_id`, `imageUrl` (from `$json.body.mediaUrl`), `prompt` (from `$json.body.prompt`)
+  - Add "Respond to Webhook" returning `{ "text": $json.data.text }`
+3. For Switch output index 2 ("Text from VIDEO"):
+  - Add HTTP Request node calling `proxy-openai-text-from-video`with `user_id`, `videoUrl` (from `$json.body.mediaUrl`), `prompt` (from `$json.body.prompt`)
+  - Add "Respond to Webhook" returning `{ "text": $json.data.text }`
+4. Use the same "Header Lovable SMA Account" credential for authentication on both HTTP nodes
+
+The existing `imageFromText` (index 4) and `videoFromText` (index 6) Switch branches are also currently unconnected. These can be wired up similarly using `proxy-openai-generate-image` (passing `imagePrompt = $json.body.text`) and `proxy-openai-start-video` (passing `videoPrompt = $json.body.text`) respectively.
