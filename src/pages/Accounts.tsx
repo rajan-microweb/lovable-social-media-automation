@@ -200,9 +200,6 @@ export default function Accounts() {
   };
 
   const fetchConnectedAccounts = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
     if (!user) {
       setLoading(false);
       return;

@@ -116,17 +116,15 @@ export default function EditPost() {
 
       const { data } = await supabase
         .from("platform_integrations")
-        .select("platform_name, credentials")
-        .eq("user_id", user.id);
+        .select("platform_name")
+        .eq("user_id", user.id)
+        .eq("status", "active");
 
       if (data) {
         const platformNames = data.map((p) => p.platform_name);
         setConnectedPlatforms(platformNames);
         const openaiIntegration = data.find((p) => p.platform_name.toLowerCase() === "openai");
         setOpenaiConnected(!!openaiIntegration);
-        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === "object") {
-          setOpenaiApiKey((openaiIntegration.credentials as any).api_key || "");
-        }
       }
     };
 
