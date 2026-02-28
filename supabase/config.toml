@@ -1,1 +1,4 @@
 project_id = "fcfdyivyjidzqjtanalq"
+
+[functions.get-platform-activity]
+verify_jwt = false
