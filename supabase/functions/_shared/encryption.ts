@@ -285,9 +285,20 @@ export async function getDecryptedPlatformCredentials(
         { encrypted_creds: rawValue }
       );
       
-      if (decryptError || !decryptedData) {
+      if (decryptError) {
         console.error(`[${platformName}] Decryption RPC error:`, decryptError);
-        return { credentials: null, integration: null, error: "Failed to decrypt credentials" };
+        return { credentials: null, integration: null, error: "Failed to decrypt credentials (pgcrypto error)" };
+      }
+
+      // pgcrypto RPC returns {} when decryption key is missing/wrong - treat as failure
+      const decryptedKeys = decryptedData ? Object.keys(decryptedData) : [];
+      if (!decryptedData || decryptedKeys.length === 0) {
+        console.error(`[${platformName}] pgcrypto decryption returned empty object - credentials stored with old encryption key that is no longer available. User must reconnect their ${platformName} account.`);
+        return { 
+          credentials: null, 
+          integration: null, 
+          error: `Your ${platformName} credentials are encrypted with an old key and cannot be decrypted. Please disconnect and reconnect your ${platformName} account to re-save your credentials.`
+        };
       }
       
       credentials = typeof decryptedData === 'string' ? JSON.parse(decryptedData) : decryptedData;
