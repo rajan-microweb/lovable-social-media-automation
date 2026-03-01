@@ -250,9 +250,23 @@ export async function getDecryptedPlatformCredentials(
 
   try {
     // Extract the raw credential value
-    const rawValue = typeof integration.credentials === 'string' 
-      ? integration.credentials 
-      : JSON.stringify(integration.credentials).replace(/^"|"$/g, '');
+    // credentials is JSONB - it may come back as a plain string (the encrypted value),
+    // or as a JSON object if stored as an object. Handle all cases.
+    let rawValue: string;
+    if (typeof integration.credentials === 'string') {
+      rawValue = integration.credentials;
+    } else if (typeof integration.credentials === 'object' && integration.credentials !== null) {
+      // JSONB stored as object - stringify and strip surrounding quotes if it's a JSON string
+      const stringified = JSON.stringify(integration.credentials);
+      // If it's a JSON string value like `"iv:ciphertext"`, strip the outer quotes
+      rawValue = stringified.startsWith('"') && stringified.endsWith('"')
+        ? stringified.slice(1, -1)
+        : stringified;
+    } else {
+      rawValue = String(integration.credentials);
+    }
+
+    console.log(`[${platformName}] Raw credential prefix: ${rawValue.substring(0, 20)}...`);
 
     // Detect AES-GCM format (iv:ciphertext) vs legacy pgcrypto
     const looksLikeAesGcm = typeof rawValue === 'string' && isEncrypted(rawValue);
