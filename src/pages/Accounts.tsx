@@ -542,35 +542,32 @@ export default function Accounts() {
       }
     }
 
-    // Step 1: Store credentials in the database first (will be encrypted by DB trigger or RLS)
+    // Step 1: Store credentials via edge function (uses AES-GCM encryption, bypasses broken pgcrypto trigger)
     try {
-      const upsertData: any = {
+      const storePayload: any = {
         user_id: user.id,
         platform_name: platformKey,
         credentials: credentialsToStore,
         status: "active",
-        updated_at: new Date().toISOString(),
       };
 
-      // Only add metadata if we have it
       if (Object.keys(metadataToStore).length > 0) {
-        upsertData.metadata = metadataToStore;
+        storePayload.metadata = metadataToStore;
       }
 
-      const { data: integrationData, error: upsertError } = await supabase
-        .from("platform_integrations")
-        .upsert(upsertData, {
-          onConflict: "user_id,platform_name",
-        })
-        .select("id")
-        .single();
+      const { data: storeResult, error: storeError } = await supabase.functions.invoke(
+        "store-platform-integration",
+        { body: storePayload }
+      );
 
-      if (upsertError) {
-        console.error("Error storing credentials:", upsertError);
-        toast.error("Failed to store credentials in database");
+      if (storeError || !storeResult?.success) {
+        const msg = storeResult?.error || storeError?.message || "Failed to store credentials in database";
+        console.error("Error storing credentials:", msg);
+        toast.error(msg);
         return;
       }
 
+      const integrationData = storeResult.data;
       toast.success("Credentials stored successfully!");
 
       // Step 2: Only after successful storage, notify n8n webhook

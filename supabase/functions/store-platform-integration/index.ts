@@ -94,14 +94,17 @@ serve(async (req) => {
   }
 
   try {
-    // API Key authentication
+    // Accept either API key (n8n) or Bearer JWT (frontend)
     const apiKey = req.headers.get('x-api-key');
     const expectedApiKey = Deno.env.get('N8N_API_KEY');
+    const authHeader = req.headers.get('authorization');
+    const hasValidApiKey = apiKey && apiKey === expectedApiKey;
+    const hasBearer = authHeader && authHeader.startsWith('Bearer ');
 
-    if (!apiKey || apiKey !== expectedApiKey) {
-      console.error('Invalid or missing API key');
+    if (!hasValidApiKey && !hasBearer) {
+      console.error('Invalid or missing authentication');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
+        JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
