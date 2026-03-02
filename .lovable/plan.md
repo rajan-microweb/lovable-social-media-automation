@@ -1,186 +1,159 @@
 
-# Implement OpenAI API Cost Tracking
+# Fix: Image Generation 502 — Async Job Pattern
 
-## Overview
+## Root Cause
 
-This implements a full API cost tracking system: n8n sends per-call cost data (model name + cost) to the backend after each OpenAI generation, the backend cumulatively adds costs per model in a new `cost` column, and the Accounts page renders a breakdown by model with a total.
+DALL-E 3 image generation takes 15–60 seconds. Cloudflare (which sits in front of Supabase Edge Functions) enforces a hard **100-second gateway timeout**. When n8n waits for `proxy-openai-generate-image` to return a complete image URL, the connection times out before OpenAI finishes, resulting in the 502 Bad Gateway error.
 
-The n8n workflow already has "Calculate OpenAI Cost" and "Update OPENAI in Database" nodes wired up for every generation type — they just need the backend to accept and process the `cost` field properly.
-
----
-
-## What n8n Currently Sends (from uploaded workflow)
-
-Each "Calculate OpenAI Cost" node in n8n computes:
-```json
-{
-  "total_tokens": "1234",
-  "estimated_cost": "0.000469",
-  "model": "gpt-4o-mini"
-}
-```
-Then sends to `update-platform-integration`:
-```json
-{
-  "platform_name": "openai",
-  "user_id": "{{ userId }}",
-  "updates": {
-    "cost": "{ total_tokens: ..., estimated_cost: ..., model: ... }"
-  }
-}
-```
-
-**Problem**: The current Zod schema uses `.strict()` and does not allow a `cost` field, so all n8n cost updates are being rejected with a 400 validation error right now.
+This is the same problem that was already solved for video generation using an async job + polling pattern. Image generation needs the exact same treatment.
 
 ---
 
-## Target Data Structure (stored in `cost` column)
+## Current vs Target Flow
 
-```json
-{
-  "models": [
-    { "model": "gpt-4o-mini", "cost": "0.00312" },
-    { "model": "dall-e-3", "cost": "0.04000" },
-    { "model": "gpt-4o", "cost": "0.01250" }
-  ],
-  "total_cost": "0.05562"
-}
+```text
+CURRENT (broken):
+n8n → proxy-openai-generate-image → [waits 15-60s] → 502 timeout
+
+TARGET (async):
+n8n → proxy-openai-start-image   → returns { jobId } immediately
+n8n → Respond to Webhook (jobId)
+Frontend polls → check-image-status webhook
+Frontend → proxy-openai-check-image → OpenAI polling → imageUrl
 ```
 
 ---
 
-## Files to Create / Modify
+## What Needs to Change
 
-| File | Action | Summary |
-|---|---|---|
-| `supabase/migrations/` | **Migration** | Add `cost` JSONB column to `platform_integrations` |
-| `supabase/functions/update-platform-integration/index.ts` | **Modify** | Accept `cost` field, implement cumulative merge logic |
-| `src/pages/Accounts.tsx` | **Modify** | Replace billing fallback UI with local cost display |
+| File | Change |
+|---|---|
+| `supabase/functions/proxy-openai-start-image/index.ts` | NEW — calls OpenAI Images API with `response_format: "url"`, stores job in DB, returns `{ jobId, status: "processing" }` |
+| `supabase/functions/proxy-openai-check-image/index.ts` | NEW — polls DB/OpenAI for job result, returns `{ status, imageUrl }` |
+| `supabase/config.toml` | Add `verify_jwt = false` entries for both new functions |
+| `src/components/AiPromptModal.tsx` | Add `pollImageStatus` (mirrors `pollVideoStatus`), update image handler to use polling |
+| **n8n workflow** | IMAGE Generation node → calls `proxy-openai-start-image`; add `check-image-status` webhook path (mirrors video pattern) |
 
 ---
 
-## 1. Database Migration
+## Technical Design
 
-Add a nullable `cost` JSONB column to `platform_integrations`:
+### Problem: OpenAI Images API is Synchronous
+
+Unlike Sora (video), the OpenAI DALL-E API (`POST /v1/images/generations`) doesn't natively return a job ID — it blocks until the image is ready. So we need to create our own async layer using the database as a job queue.
+
+### Job Queue Approach (using `platform_integrations` metadata)
+
+Rather than creating a new table, we store image jobs in a temporary JSONB structure in a new `image_jobs` column or — more simply — we store them in a lightweight new table.
+
+Actually, the simplest approach that avoids a new migration: store the pending job in the `platform_integrations` metadata field temporarily, keyed by a generated job ID. On check, look up the job and return its status.
+
+Even simpler: use **Supabase Edge Function background tasks** via `EdgeRuntime.waitUntil()` — the function responds immediately with a job ID, then continues processing the DALL-E call in the background and writes the result to a new `image_generation_jobs` table. The check function reads from that table.
+
+### Database: New `image_generation_jobs` Table
 
 ```sql
-ALTER TABLE public.platform_integrations
-ADD COLUMN IF NOT EXISTS cost JSONB DEFAULT NULL;
+CREATE TABLE public.image_generation_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  status TEXT NOT NULL DEFAULT 'processing',  -- processing | completed | failed
+  image_url TEXT,
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.image_generation_jobs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read own image jobs"
+  ON public.image_generation_jobs FOR SELECT
+  USING (auth.uid() = user_id);
 ```
 
-Default is `NULL` meaning no cost tracked yet. No RLS changes needed — the column is on the same table that already has correct per-user policies.
+The edge function uses the **service role key** (already available) to write results, bypassing RLS — this is required since the background task runs after the response is sent.
 
----
+### `proxy-openai-start-image` (NEW)
 
-## 2. Update Edge Function: `update-platform-integration`
-
-### Zod Schema Change
-Add `cost` to the `updates` object (remove `.strict()` or add the field):
-
-```typescript
-updates: z.object({
-  credentials: z.record(z.unknown()).optional(),
-  metadata: z.record(z.unknown()).optional(),
-  status: z.enum(["active", "inactive", "expired"]).optional(),
-  cost: z.union([z.record(z.unknown()), z.string()]).optional(), // NEW
-}).strict(),
+```
+1. Validate API key
+2. Extract user_id, imagePrompt
+3. Decrypt OpenAI credentials (same as existing image function)
+4. INSERT a job row into image_generation_jobs (status: 'processing')
+5. Respond immediately: { jobId: row.id, status: "processing" }
+6. EdgeRuntime.waitUntil(async () => {
+     Call OpenAI /v1/images/generations
+     On success: UPDATE job SET status='completed', image_url=...
+     On error:   UPDATE job SET status='failed', error=...
+   })
 ```
 
-### Cumulative Merge Logic (added after metadata handling)
+This is the key pattern: `EdgeRuntime.waitUntil()` lets the function respond to n8n instantly while the actual DALL-E call continues running in the background — no timeout.
+
+### `proxy-openai-check-image` (NEW)
+
+```
+1. Validate API key
+2. Extract user_id, jobId
+3. SELECT from image_generation_jobs WHERE id = jobId AND user_id = user_id
+4. Return { status, imageUrl } based on row status
+```
+
+This is a simple DB read — executes in milliseconds.
+
+### `AiPromptModal.tsx` Changes
+
+Add a `CHECK_IMAGE_WEBHOOK` constant pointing to the n8n check-image-status webhook, and a `pollImageStatus()` function mirroring `pollVideoStatus()`:
 
 ```typescript
-if (updates.cost !== undefined) {
-  // Parse incoming cost (n8n sends it as stringified JSON sometimes)
-  let incomingCost: { model?: string; estimated_cost?: string; total_tokens?: string };
-  if (typeof updates.cost === 'string') {
-    incomingCost = JSON.parse(updates.cost);
-  } else {
-    incomingCost = updates.cost as typeof incomingCost;
-  }
+const IMAGE_POLL_INTERVAL_MS = 5_000;    // 5s — faster than video
+const IMAGE_MAX_POLL_DURATION_MS = 3 * 60 * 1000;  // 3 min max
+const CHECK_IMAGE_WEBHOOK = "https://n8n.srv1248804.hstgr.cloud/webhook/check-image-status";
+```
 
-  // Fetch existing cost column
-  const { data: existingRecord } = await supabase
-    .from("platform_integrations")
-    .select("cost")
-    .eq("platform_name", platform_name)
-    .eq("user_id", user_id)
-    .single();
+Update the image result handler in `handleGenerate`:
 
-  const existingCost = (existingRecord?.cost as { models: Array<{model: string; cost: string}>; total_cost: string } | null) 
-    ?? { models: [], total_cost: "0" };
+```typescript
+// Before (broken):
+const imageUrl = data.imageUrl || ...
+if (!imageUrl) throw new Error(...)
+...
 
-  // Build model map and add incoming cost cumulatively
-  const modelsMap: Record<string, number> = {};
-  for (const m of existingCost.models) {
-    modelsMap[m.model] = parseFloat(m.cost) || 0;
-  }
-
-  const modelName = incomingCost.model ?? "unknown";
-  const newCost = parseFloat(incomingCost.estimated_cost ?? "0") || 0;
-  modelsMap[modelName] = (modelsMap[modelName] || 0) + newCost;
-
-  const mergedModels = Object.entries(modelsMap).map(([model, cost]) => ({
-    model,
-    cost: cost.toString(),
-  }));
-  const totalCost = mergedModels.reduce((sum, m) => sum + parseFloat(m.cost), 0);
-
-  updateData.cost = {
-    models: mergedModels,
-    total_cost: totalCost.toString(),
-  };
+// After (async):
+const jobId = data.jobId || data.data?.jobId;
+if (jobId) {
+  // Async path — poll for result
+  setUploadProgress("Generating image...");
+  const imageUrl = await pollImageStatus(jobId);
+  const permanent = await uploadAiMedia(imageUrl.trim(), "image");
+  onGenerate(permanent);
+} else {
+  // Synchronous fallback (backwards compat)
+  const imageUrl = data.imageUrl || data.image_url || data.data?.imageUrl || data.url || "";
+  if (!imageUrl) throw new Error(...)
+  ...
 }
 ```
 
----
+### n8n Workflow Changes Required
 
-## 3. Frontend Changes in `Accounts.tsx`
+You will need to update your n8n workflow after this implementation:
 
-### New State & Types
-
-```typescript
-interface ApiCostModel { model: string; cost: string; }
-interface ApiCost { models: ApiCostModel[]; total_cost: string; }
-```
-
-The `cost` data will be passed through `fetchConnectedAccounts` — it already fetches the full `platform_integrations` row. We add `cost` to the `ConnectedAccount` interface and pass it through.
-
-### New UI Section (replaces the existing "Usage & Balance" collapsible)
-
-Instead of calling the `proxy-openai-usage` edge function (which fails for new accounts), we show the locally-tracked cost data directly from the database row. The section shows:
-
-- **Per-model breakdown**: table rows with model name, formatted cost ($0.00000)
-- **Total cost**: prominent total at the bottom
-- **"View on OpenAI"** link: always present for full usage history
-
-```typescript
-const formatCost = (cost: string) => {
-  const n = parseFloat(cost);
-  return isNaN(n) ? '$0.00000' : `$${n.toFixed(5)}`;
-};
-```
-
-The section renders inside the existing OpenAI card after the Organizations block, visible without any collapsible (since it's local data, no loading needed). If `cost` is null (no calls tracked yet), show a subtle "No usage tracked yet" message.
-
-### Fetch Update
-
-In `fetchConnectedAccounts`, add `cost` to the select and map it into the account object:
-
-```typescript
-const { data } = await supabase
-  .from("platform_integrations")
-  .select("id, platform_name, credentials, metadata, status, cost") // add cost
-  ...
-
-// In the OpenAI account mapping:
-apiCost: integration.cost as ApiCost | null,
-```
+1. **IMAGE Generation node**: Change the URL from `proxy-openai-generate-image` → `proxy-openai-start-image`
+2. **Respond to Webhook1**: Already responds with `{ jobId, status }` (same shape as video, line 39 in the uploaded workflow — it returns `$json.data.imageUrl` currently, needs to return `$json.data.jobId` and `$json.data.status`)
+3. **Add new webhook**: Add a `check-image-status` webhook (path `/check-image-status`) that calls `proxy-openai-check-image` and responds with `{ status, imageUrl }` — mirror the existing video status check path
 
 ---
 
-## Technical Notes
+## Files to Create/Modify
 
-- The n8n workflow sends `user_id` as `$('Webhook').item.json.body.user_id` (note: lowercase `user_id` not `userId`) — this is already correct for the edge function
-- The `cost_usd` field from proxy functions is more accurate than n8n's flat `0.00000038` rate — but since the n8n workflow already has these nodes and we can't change n8n here, we accept its calculation. The proxy functions already return `cost_usd` in their response which n8n reads via `$json.data.tokens_used.total * 0.00000038` — so the cost shown will reflect n8n's calculated value
-- The `cost` column is separate from `credentials` and `metadata` — it is never encrypted since it contains no sensitive data
-- No new migration is needed for RLS — the existing `Users can update own integrations` policy on `platform_integrations` covers the new column automatically
+1. **NEW** `supabase/functions/proxy-openai-start-image/index.ts`
+2. **NEW** `supabase/functions/proxy-openai-check-image/index.ts`
+3. **MODIFY** `supabase/config.toml` — add `verify_jwt = false` for both new functions
+4. **MODIFY** `src/components/AiPromptModal.tsx` — add image polling logic
+5. **DATABASE MIGRATION** — create `image_generation_jobs` table with RLS
+
+---
+
+## Notes on `proxy-openai-generate-image`
+
+The existing function (`proxy-openai-generate-image`) is kept as-is and not deleted — it is still used for the "carousel image generation" flow in CreatePost.tsx which calls an n8n webhook differently. Only the main AI modal image generation path (via the primary n8n webhook) is switched to async.
