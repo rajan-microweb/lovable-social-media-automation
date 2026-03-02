@@ -8,6 +8,12 @@ import {
   getDecryptedPlatformCredentials,
 } from "../_shared/encryption.ts";
 
+// DALL-E 3 pricing: per image (1024x1024 standard = $0.040)
+const DALLE_PRICING: Record<string, number> = {
+  "dall-e-3": 0.040,
+  "dall-e-2": 0.020,
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -39,6 +45,7 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse("No OpenAI API key found in credentials"), 404);
     }
 
+    const MODEL = "dall-e-3";
     console.log("[proxy-openai-generate-image] Calling OpenAI image generation...");
 
     const response = await fetch("https://api.openai.com/v1/images/generations", {
@@ -48,7 +55,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "dall-e-3",
+        model: MODEL,
         prompt: imagePrompt,
         n: 1,
         size: "1024x1024",
@@ -68,8 +75,17 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse("No image URL returned from OpenAI"), 502);
     }
 
+    const usedModel = data.model ?? MODEL;
+    const imagesGenerated = data.data?.length ?? 1;
+    const costUsd = (DALLE_PRICING[usedModel] ?? 0.040) * imagesGenerated;
+
     console.log("[proxy-openai-generate-image] Success");
-    return jsonResponse(successResponse({ imageUrl }));
+    return jsonResponse(successResponse({
+      imageUrl,
+      model: usedModel,
+      tokens_used: { prompt: 0, completion: 0, total: 0 }, // image models don't use tokens
+      cost_usd: Math.round(costUsd * 1_000_000) / 1_000_000,
+    }));
   } catch (error) {
     console.error("[proxy-openai-generate-image] Error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
