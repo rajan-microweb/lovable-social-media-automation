@@ -253,9 +253,9 @@ export function AiPromptModal({
     (jobId: string): Promise<string> =>
       new Promise((resolve, reject) => {
         const start = Date.now();
-        const interval = setInterval(async () => {
+        pollIntervalRef.current = setInterval(async () => {
           if (Date.now() - start >= IMAGE_MAX_POLL_DURATION_MS) {
-            clearInterval(interval);
+            if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
             reject(new Error("Image generation timed out after 3 minutes"));
             return;
           }
@@ -269,8 +269,13 @@ export function AiPromptModal({
             const data = await res.json();
             const status = data.status || data.data?.status;
             const imageUrl = data.imageUrl || data.data?.imageUrl || data.image_url || "";
-            if (status === "completed" && imageUrl) { clearInterval(interval); resolve(imageUrl); }
-            else if (status === "failed") { clearInterval(interval); reject(new Error(data.error || data.data?.error || "Image generation failed")); }
+            if (status === "completed" && imageUrl) {
+              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              resolve(imageUrl);
+            } else if (status === "failed") {
+              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              reject(new Error(data.error || data.data?.error || "Image generation failed"));
+            }
           } catch { /* keep polling */ }
         }, IMAGE_POLL_INTERVAL_MS);
       }),

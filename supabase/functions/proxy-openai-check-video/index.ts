@@ -26,11 +26,11 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createSupabaseClient();
-    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+    const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
       supabase, user_id, "openai"
     );
 
-    if (credError || !credentials) {
+    if (credError || !credentials || !integration) {
       return jsonResponse(errorResponse(credError || "OpenAI integration not found"), 404);
     }
 
@@ -38,6 +38,15 @@ Deno.serve(async (req) => {
     if (!openaiKey) {
       return jsonResponse(errorResponse("No OpenAI API key found in credentials"), 404);
     }
+
+    // Read job metadata stored by proxy-openai-start-video
+    const metadata = (integration.metadata as Record<string, unknown>) ?? {};
+    const videoJobs = (metadata.video_jobs as Record<string, Record<string, unknown>>) ?? {};
+    const jobMeta = videoJobs[jobId] ?? {};
+
+    const storedModel = (jobMeta.model as string) ?? "sora-2";
+    const storedCostUsd = (jobMeta.cost_usd as number) ?? null;
+    const storedTokens = (jobMeta.tokens_used as { prompt: number; completion: number; total: number }) ?? { prompt: 0, completion: 0, total: 0 };
 
     const headers = {
       "Authorization": `Bearer ${openaiKey}`,
@@ -76,7 +85,13 @@ Deno.serve(async (req) => {
         const videoUrl = contentResponse.headers.get("Location");
         if (videoUrl) {
           console.log("[proxy-openai-check-video] Got redirect URL");
-          return jsonResponse(successResponse({ status: "completed", videoUrl }));
+          return jsonResponse(successResponse({
+            status: "completed",
+            videoUrl,
+            model: storedModel,
+            tokens_used: storedTokens,
+            cost_usd: storedCostUsd,
+          }));
         }
       }
 
@@ -89,7 +104,13 @@ Deno.serve(async (req) => {
           const videoUrl = contentData.url || contentData.result?.url;
           if (videoUrl) {
             console.log("[proxy-openai-check-video] Got URL from JSON");
-            return jsonResponse(successResponse({ status: "completed", videoUrl }));
+            return jsonResponse(successResponse({
+              status: "completed",
+              videoUrl,
+              model: storedModel,
+              tokens_used: storedTokens,
+              cost_usd: storedCostUsd,
+            }));
           }
         }
 
@@ -116,7 +137,13 @@ Deno.serve(async (req) => {
           .getPublicUrl(filePath);
 
         console.log("[proxy-openai-check-video] Uploaded to storage");
-        return jsonResponse(successResponse({ status: "completed", videoUrl: publicUrlData.publicUrl }));
+        return jsonResponse(successResponse({
+          status: "completed",
+          videoUrl: publicUrlData.publicUrl,
+          model: storedModel,
+          tokens_used: storedTokens,
+          cost_usd: storedCostUsd,
+        }));
       }
 
       const errorText = await contentResponse.text();
