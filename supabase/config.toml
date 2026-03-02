@@ -1,5 +1,11 @@
 project_id = "fcfdyivyjidzqjtanalq"
 
+[functions.proxy-openai-start-image]
+verify_jwt = false
+
+[functions.proxy-openai-check-image]
+verify_jwt = false
+
 [functions.proxy-openai-usage]
 verify_jwt = false
 
