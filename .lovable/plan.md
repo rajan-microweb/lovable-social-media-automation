@@ -1,102 +1,186 @@
 
-# Add OpenAI API Usage & Balance History to Accounts Page
+# Implement OpenAI API Cost Tracking
 
-## What We're Building
+## Overview
 
-Two new visual sections inside the existing OpenAI account card on the Accounts page:
+This implements a full API cost tracking system: n8n sends per-call cost data (model name + cost) to the backend after each OpenAI generation, the backend cumulatively adds costs per model in a new `cost` column, and the Accounts page renders a breakdown by model with a total.
 
-1. **Credit Balance** — Shows remaining credits and total granted credits (from `/v1/dashboard/billing/subscription`)
-2. **Usage History** — Shows daily token usage for the last 30 days as a simple bar chart (from `/v1/dashboard/billing/usage`)
+The n8n workflow already has "Calculate OpenAI Cost" and "Update OPENAI in Database" nodes wired up for every generation type — they just need the backend to accept and process the `cost` field properly.
 
-### Important Limitation
+---
 
-OpenAI's billing/usage endpoints (`/v1/dashboard/billing/subscription` and `/v1/dashboard/billing/usage`) are undocumented but still work for many accounts. However, they **do not work** for accounts on the new usage-based billing plan (post-2024 API accounts) and require a standard `sk-` key. When the endpoint returns an error, we gracefully show a "View on OpenAI Dashboard" link instead.
+## What n8n Currently Sends (from uploaded workflow)
+
+Each "Calculate OpenAI Cost" node in n8n computes:
+```json
+{
+  "total_tokens": "1234",
+  "estimated_cost": "0.000469",
+  "model": "gpt-4o-mini"
+}
+```
+Then sends to `update-platform-integration`:
+```json
+{
+  "platform_name": "openai",
+  "user_id": "{{ userId }}",
+  "updates": {
+    "cost": "{ total_tokens: ..., estimated_cost: ..., model: ... }"
+  }
+}
+```
+
+**Problem**: The current Zod schema uses `.strict()` and does not allow a `cost` field, so all n8n cost updates are being rejected with a 400 validation error right now.
+
+---
+
+## Target Data Structure (stored in `cost` column)
+
+```json
+{
+  "models": [
+    { "model": "gpt-4o-mini", "cost": "0.00312" },
+    { "model": "dall-e-3", "cost": "0.04000" },
+    { "model": "gpt-4o", "cost": "0.01250" }
+  ],
+  "total_cost": "0.05562"
+}
+```
 
 ---
 
 ## Files to Create / Modify
 
-| File | Action |
-|---|---|
-| `supabase/functions/proxy-openai-usage/index.ts` | **Create** — new edge function |
-| `src/pages/Accounts.tsx` | **Modify** — render usage/balance in OpenAI card |
+| File | Action | Summary |
+|---|---|---|
+| `supabase/migrations/` | **Migration** | Add `cost` JSONB column to `platform_integrations` |
+| `supabase/functions/update-platform-integration/index.ts` | **Modify** | Accept `cost` field, implement cumulative merge logic |
+| `src/pages/Accounts.tsx` | **Modify** | Replace billing fallback UI with local cost display |
 
 ---
 
-## 1. New Edge Function: `proxy-openai-usage`
+## 1. Database Migration
 
-Accepts `user_id` + optional `days` (default 30). Decrypts the stored OpenAI API key, then calls two OpenAI endpoints in parallel:
+Add a nullable `cost` JSONB column to `platform_integrations`:
 
-- `GET https://api.openai.com/v1/dashboard/billing/subscription` — returns `hard_limit_usd`, `soft_limit_usd`, `system_hard_limit_usd`
-- `GET https://api.openai.com/v1/dashboard/billing/usage?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` — returns daily breakdown
+```sql
+ALTER TABLE public.platform_integrations
+ADD COLUMN IF NOT EXISTS cost JSONB DEFAULT NULL;
+```
 
-Returns a combined response:
+Default is `NULL` meaning no cost tracked yet. No RLS changes needed — the column is on the same table that already has correct per-user policies.
 
-```json
-{
-  "success": true,
-  "data": {
-    "subscription": {
-      "plan": "pay-as-you-go",
-      "hard_limit_usd": 10.00,
-      "soft_limit_usd": 8.00,
-      "access_until": "2025-12-31T00:00:00Z"
-    },
-    "usage": {
-      "total_usage_usd": 4.23,
-      "daily": [
-        { "date": "2025-02-01", "cost_usd": 0.12 },
-        ...
-      ]
-    },
-    "available": true
+---
+
+## 2. Update Edge Function: `update-platform-integration`
+
+### Zod Schema Change
+Add `cost` to the `updates` object (remove `.strict()` or add the field):
+
+```typescript
+updates: z.object({
+  credentials: z.record(z.unknown()).optional(),
+  metadata: z.record(z.unknown()).optional(),
+  status: z.enum(["active", "inactive", "expired"]).optional(),
+  cost: z.union([z.record(z.unknown()), z.string()]).optional(), // NEW
+}).strict(),
+```
+
+### Cumulative Merge Logic (added after metadata handling)
+
+```typescript
+if (updates.cost !== undefined) {
+  // Parse incoming cost (n8n sends it as stringified JSON sometimes)
+  let incomingCost: { model?: string; estimated_cost?: string; total_tokens?: string };
+  if (typeof updates.cost === 'string') {
+    incomingCost = JSON.parse(updates.cost);
+  } else {
+    incomingCost = updates.cost as typeof incomingCost;
   }
+
+  // Fetch existing cost column
+  const { data: existingRecord } = await supabase
+    .from("platform_integrations")
+    .select("cost")
+    .eq("platform_name", platform_name)
+    .eq("user_id", user_id)
+    .single();
+
+  const existingCost = (existingRecord?.cost as { models: Array<{model: string; cost: string}>; total_cost: string } | null) 
+    ?? { models: [], total_cost: "0" };
+
+  // Build model map and add incoming cost cumulatively
+  const modelsMap: Record<string, number> = {};
+  for (const m of existingCost.models) {
+    modelsMap[m.model] = parseFloat(m.cost) || 0;
+  }
+
+  const modelName = incomingCost.model ?? "unknown";
+  const newCost = parseFloat(incomingCost.estimated_cost ?? "0") || 0;
+  modelsMap[modelName] = (modelsMap[modelName] || 0) + newCost;
+
+  const mergedModels = Object.entries(modelsMap).map(([model, cost]) => ({
+    model,
+    cost: cost.toString(),
+  }));
+  const totalCost = mergedModels.reduce((sum, m) => sum + parseFloat(m.cost), 0);
+
+  updateData.cost = {
+    models: mergedModels,
+    total_cost: totalCost.toString(),
+  };
 }
 ```
 
-If the billing endpoints return 403/401 (not available for this account type), returns `"available": false` with a message so the UI can show a dashboard link instead.
-
 ---
 
-## 2. Frontend Changes in `Accounts.tsx`
+## 3. Frontend Changes in `Accounts.tsx`
 
-Add state for usage data per OpenAI account and a "fetch usage" trigger:
+### New State & Types
 
 ```typescript
-const [openaiUsage, setOpenaiUsage] = useState<OpenAIUsageData | null>(null);
-const [loadingUsage, setLoadingUsage] = useState(false);
+interface ApiCostModel { model: string; cost: string; }
+interface ApiCost { models: ApiCostModel[]; total_cost: string; }
 ```
 
-Inside the OpenAI account card (after the Organizations section), add a new collapsible "Usage & Balance" section with:
+The `cost` data will be passed through `fetchConnectedAccounts` — it already fetches the full `platform_integrations` row. We add `cost` to the `ConnectedAccount` interface and pass it through.
 
-- **Balance bar**: Visual progress bar showing `total_used / hard_limit` with dollar amounts
-- **Last 30 days chart**: Mini bar chart (using Recharts `BarChart` already in the project) showing daily cost
-- **Refresh button**: Re-fetches usage data
-- **Fallback**: If `available: false`, shows an info box with a link to `https://platform.openai.com/usage`
+### New UI Section (replaces the existing "Usage & Balance" collapsible)
 
-The usage is fetched automatically when the OpenAI section is expanded/connected, using `supabase.functions.invoke("proxy-openai-usage", { body: { user_id } })`.
+Instead of calling the `proxy-openai-usage` edge function (which fails for new accounts), we show the locally-tracked cost data directly from the database row. The section shows:
+
+- **Per-model breakdown**: table rows with model name, formatted cost ($0.00000)
+- **Total cost**: prominent total at the bottom
+- **"View on OpenAI"** link: always present for full usage history
+
+```typescript
+const formatCost = (cost: string) => {
+  const n = parseFloat(cost);
+  return isNaN(n) ? '$0.00000' : `$${n.toFixed(5)}`;
+};
+```
+
+The section renders inside the existing OpenAI card after the Organizations block, visible without any collapsible (since it's local data, no loading needed). If `cost` is null (no calls tracked yet), show a subtle "No usage tracked yet" message.
+
+### Fetch Update
+
+In `fetchConnectedAccounts`, add `cost` to the select and map it into the account object:
+
+```typescript
+const { data } = await supabase
+  .from("platform_integrations")
+  .select("id, platform_name, credentials, metadata, status, cost") // add cost
+  ...
+
+// In the OpenAI account mapping:
+apiCost: integration.cost as ApiCost | null,
+```
 
 ---
 
-## Technical Details
+## Technical Notes
 
-### Edge Function Auth
-Uses the same pattern as all other proxy functions — validates `x-api-key` header against `N8N_API_KEY` secret, OR accepts a Bearer JWT from the frontend (same pattern introduced in `store-platform-integration`).
-
-### config.toml
-Add entry:
-```toml
-[functions.proxy-openai-usage]
-verify_jwt = false
-```
-
-### Recharts Usage
-The project already has `recharts` installed. We'll use:
-- `BarChart`, `Bar`, `XAxis`, `YAxis`, `Tooltip`, `ResponsiveContainer` from recharts
-- Keep the chart compact (height: 120px) inside the card
-
-### Graceful Degradation
-If OpenAI returns 403 (common for newer accounts), the function returns `{ available: false }` and the UI shows:
-> "Billing details aren't available via API for this account type. View your usage at platform.openai.com/usage"
-
-This avoids showing errors and keeps the UX clean.
+- The n8n workflow sends `user_id` as `$('Webhook').item.json.body.user_id` (note: lowercase `user_id` not `userId`) — this is already correct for the edge function
+- The `cost_usd` field from proxy functions is more accurate than n8n's flat `0.00000038` rate — but since the n8n workflow already has these nodes and we can't change n8n here, we accept its calculation. The proxy functions already return `cost_usd` in their response which n8n reads via `$json.data.tokens_used.total * 0.00000038` — so the cost shown will reflect n8n's calculated value
+- The `cost` column is separate from `credentials` and `metadata` — it is never encrypted since it contains no sensitive data
+- No new migration is needed for RLS — the existing `Users can update own integrations` policy on `platform_integrations` covers the new column automatically
