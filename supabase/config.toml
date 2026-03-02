@@ -1,5 +1,8 @@
 project_id = "fcfdyivyjidzqjtanalq"
 
+[functions.proxy-openai-usage]
+verify_jwt = false
+
 [functions.get-platform-activity]
 verify_jwt = false
 
