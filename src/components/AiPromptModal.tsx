@@ -164,6 +164,10 @@ const VIDEO_POLL_INTERVAL_MS = 10_000;
 const VIDEO_MAX_POLL_DURATION_MS = 5 * 60 * 1000;
 const CHECK_VIDEO_WEBHOOK = "https://n8n.srv1248804.hstgr.cloud/webhook/check-video-status";
 
+const IMAGE_POLL_INTERVAL_MS = 5_000;
+const IMAGE_MAX_POLL_DURATION_MS = 3 * 60 * 1000;
+const CHECK_IMAGE_WEBHOOK = "https://n8n.srv1248804.hstgr.cloud/webhook/check-image-status";
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getDependencyValue(dep: Dependency, context?: AiContext): string {
@@ -244,6 +248,34 @@ export function AiPromptModal({
   useEffect(() => () => cleanupPolling(), [cleanupPolling]);
 
   // ── Polling ─────────────────────────────────────────────────────────────
+
+  const pollImageStatus = useCallback(
+    (jobId: string): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const start = Date.now();
+        const interval = setInterval(async () => {
+          if (Date.now() - start >= IMAGE_MAX_POLL_DURATION_MS) {
+            clearInterval(interval);
+            reject(new Error("Image generation timed out after 3 minutes"));
+            return;
+          }
+          try {
+            const res = await fetch(CHECK_IMAGE_WEBHOOK, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ jobId, userId: context?.userId }),
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const status = data.status || data.data?.status;
+            const imageUrl = data.imageUrl || data.data?.imageUrl || data.image_url || "";
+            if (status === "completed" && imageUrl) { clearInterval(interval); resolve(imageUrl); }
+            else if (status === "failed") { clearInterval(interval); reject(new Error(data.error || data.data?.error || "Image generation failed")); }
+          } catch { /* keep polling */ }
+        }, IMAGE_POLL_INTERVAL_MS);
+      }),
+    [context?.userId]
+  );
 
   const pollVideoStatus = useCallback(
     (jobId: string): Promise<string> =>
@@ -381,11 +413,22 @@ export function AiPromptModal({
         selectedOption.key === "image:prompt" ||
         selectedOption.key === "image:fromText"
       ) {
-        const imageUrl = data.imageUrl || data.image_url || data.data?.imageUrl || data.url || "";
-        if (!imageUrl) throw new Error(`No image URL returned. Response: ${JSON.stringify(data)}`);
-        setUploadProgress("Uploading image to storage...");
-        const permanent = await uploadAiMedia(imageUrl.trim(), "image");
-        onGenerate(permanent);
+        const jobId = data.jobId || data.data?.jobId;
+        if (jobId) {
+          // Async path — poll for result
+          setUploadProgress("Generating image...");
+          const imageUrl = await pollImageStatus(jobId);
+          setUploadProgress("Uploading image to storage...");
+          const permanent = await uploadAiMedia(imageUrl.trim(), "image");
+          onGenerate(permanent);
+        } else {
+          // Synchronous fallback (backwards compat)
+          const imageUrl = data.imageUrl || data.image_url || data.data?.imageUrl || data.url || "";
+          if (!imageUrl) throw new Error(`No image URL returned. Response: ${JSON.stringify(data)}`);
+          setUploadProgress("Uploading image to storage...");
+          const permanent = await uploadAiMedia(imageUrl.trim(), "image");
+          onGenerate(permanent);
+        }
         toast.success("Image generated and stored successfully");
       }
 
