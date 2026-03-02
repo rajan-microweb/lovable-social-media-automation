@@ -137,6 +137,7 @@ const updatePlatformIntegrationSchema = z.object({
         .refine((val) => JSON.stringify(val).length <= 100000, { message: "Metadata object too large" })
         .optional(),
       status: z.enum(["active", "inactive", "expired"]).optional(),
+      cost: z.union([z.record(z.unknown()), z.string()]).optional(),
     })
     .strict(),
 });
@@ -253,6 +254,55 @@ Deno.serve(async (req) => {
       updateData.metadata = mergedMetadata;
       
       console.info("Metadata merged successfully");
+    }
+
+    // Handle cost field — cumulative merge logic
+    if (updates.cost !== undefined) {
+      // Parse incoming cost (n8n sends it as stringified JSON sometimes)
+      let incomingCost: { model?: string; estimated_cost?: string; total_tokens?: string };
+      if (typeof updates.cost === 'string') {
+        try {
+          incomingCost = JSON.parse(updates.cost);
+        } catch {
+          incomingCost = { model: "unknown", estimated_cost: "0" };
+        }
+      } else {
+        incomingCost = updates.cost as typeof incomingCost;
+      }
+
+      // Fetch existing cost column
+      const { data: existingRecord } = await supabase
+        .from("platform_integrations")
+        .select("cost")
+        .eq("platform_name", platform_name)
+        .eq("user_id", user_id)
+        .single();
+
+      const existingCost = (existingRecord?.cost as { models: Array<{model: string; cost: string}>; total_cost: string } | null)
+        ?? { models: [], total_cost: "0" };
+
+      // Build model map and add incoming cost cumulatively
+      const modelsMap: Record<string, number> = {};
+      for (const m of existingCost.models) {
+        modelsMap[m.model] = parseFloat(m.cost) || 0;
+      }
+
+      const modelName = incomingCost.model ?? "unknown";
+      const newCost = parseFloat(incomingCost.estimated_cost ?? "0") || 0;
+      modelsMap[modelName] = (modelsMap[modelName] || 0) + newCost;
+
+      const mergedModels = Object.entries(modelsMap).map(([model, cost]) => ({
+        model,
+        cost: cost.toString(),
+      }));
+      const totalCost = mergedModels.reduce((sum, m) => sum + parseFloat(m.cost), 0);
+
+      updateData.cost = {
+        models: mergedModels,
+        total_cost: totalCost.toString(),
+      };
+
+      console.info("Cost merged successfully:", { modelName, newCost, totalCost });
     }
 
     // Update only for provided user_id
