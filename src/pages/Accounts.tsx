@@ -24,8 +24,14 @@ import {
   Facebook,
   Youtube,
   RefreshCw,
+  BarChart2,
+  ExternalLink,
+  TrendingUp,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Progress } from "@/components/ui/progress";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -96,6 +102,33 @@ export default function Accounts() {
     open: false,
     platform: null,
   });
+
+  // OpenAI usage state
+  const [openaiUsage, setOpenaiUsage] = useState<{
+    available: boolean;
+    subscription?: { plan: string; hard_limit_usd: number | null; soft_limit_usd: number | null };
+    usage?: { total_usage_usd: number; daily: Array<{ date: string; cost_usd: number }> };
+  } | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
+  const [usagePanelOpen, setUsagePanelOpen] = useState(false);
+
+  const fetchOpenAIUsage = useCallback(async () => {
+    if (!user) return;
+    setLoadingUsage(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("proxy-openai-usage", {
+        body: { user_id: user.id },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        setOpenaiUsage(data.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch OpenAI usage:", err);
+    } finally {
+      setLoadingUsage(false);
+    }
+  }, [user]);
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -905,6 +938,120 @@ export default function Accounts() {
                                 Member since {new Date(meta.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short" })}
                               </p>
                             )}
+
+                            {/* Usage & Balance Section */}
+                            <Collapsible
+                              open={usagePanelOpen}
+                              onOpenChange={(open) => {
+                                setUsagePanelOpen(open);
+                                if (open && !openaiUsage && !loadingUsage) {
+                                  fetchOpenAIUsage();
+                                }
+                              }}
+                            >
+                              <CollapsibleTrigger asChild>
+                                <Button variant="outline" size="sm" className="w-full mt-1 gap-2">
+                                  <BarChart2 className="h-4 w-4" />
+                                  {usagePanelOpen ? "Hide" : "View"} Usage & Balance
+                                </Button>
+                              </CollapsibleTrigger>
+                              <CollapsibleContent className="pt-3 space-y-4">
+                                {loadingUsage ? (
+                                  <p className="text-xs text-muted-foreground text-center py-4">Loading usage data…</p>
+                                ) : openaiUsage === null ? null : !openaiUsage.available ? (
+                                  <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm space-y-1">
+                                    <p className="text-muted-foreground">
+                                      Billing details aren't available via API for this account type.
+                                    </p>
+                                    <a
+                                      href="https://platform.openai.com/usage"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-primary hover:underline text-xs font-medium"
+                                    >
+                                      View usage on OpenAI Dashboard <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {/* Balance Bar */}
+                                    {openaiUsage.subscription?.hard_limit_usd != null && (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between text-xs">
+                                          <span className="font-medium text-muted-foreground uppercase tracking-wider">Credit Usage</span>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-5 w-5"
+                                            onClick={fetchOpenAIUsage}
+                                            disabled={loadingUsage}
+                                          >
+                                            <RefreshCw className={`h-3 w-3 ${loadingUsage ? "animate-spin" : ""}`} />
+                                          </Button>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                          <span>Used: ${openaiUsage.usage?.total_usage_usd?.toFixed(4) ?? "0.00"}</span>
+                                          <span>Limit: ${openaiUsage.subscription.hard_limit_usd.toFixed(2)}</span>
+                                        </div>
+                                        <Progress
+                                          value={Math.min(
+                                            100,
+                                            ((openaiUsage.usage?.total_usage_usd ?? 0) /
+                                              openaiUsage.subscription.hard_limit_usd) *
+                                              100,
+                                          )}
+                                          className="h-2"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                          Plan: {openaiUsage.subscription.plan}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {/* 30-day usage chart */}
+                                    {openaiUsage.usage && openaiUsage.usage.daily.length > 0 && (
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                          <TrendingUp className="h-3 w-3" />
+                                          Last 30 Days
+                                        </div>
+                                        <div className="h-[110px] w-full">
+                                          <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={openaiUsage.usage.daily} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+                                              <XAxis
+                                                dataKey="date"
+                                                tick={{ fontSize: 9 }}
+                                                tickFormatter={(v) => v.slice(5)}
+                                                interval="preserveStartEnd"
+                                              />
+                                              <YAxis tick={{ fontSize: 9 }} tickFormatter={(v) => `$${v}`} />
+                                              <Tooltip
+                                                formatter={(value: number) => [`$${value.toFixed(4)}`, "Cost"]}
+                                                labelStyle={{ fontSize: 10 }}
+                                                contentStyle={{ fontSize: 10 }}
+                                              />
+                                              <Bar dataKey="cost_usd" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
+                                            </BarChart>
+                                          </ResponsiveContainer>
+                                        </div>
+                                        <a
+                                          href="https://platform.openai.com/usage"
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+                                        >
+                                          Full details on OpenAI <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                      </div>
+                                    )}
+
+                                    {openaiUsage.usage && openaiUsage.usage.daily.length === 0 && (
+                                      <p className="text-xs text-muted-foreground text-center py-2">No usage in the last 30 days.</p>
+                                    )}
+                                  </>
+                                )}
+                              </CollapsibleContent>
+                            </Collapsible>
                           </CardContent>
                         </Card>
                       );
