@@ -8,6 +8,11 @@ import {
   getDecryptedPlatformCredentials,
 } from "../_shared/encryption.ts";
 
+// Sora pricing per second of video (720p)
+const SORA_PRICING: Record<string, number> = {
+  "sora-2": 0.030,  // ~$0.03/second at 720p (estimated)
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -39,6 +44,7 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse("No OpenAI API key found in credentials"), 404);
     }
 
+    const MODEL = "sora-2";
     console.log("[proxy-openai-start-video] Starting Sora video generation...");
 
     const createResponse = await fetch("https://api.openai.com/v1/videos", {
@@ -48,7 +54,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "sora-2",
+        model: MODEL,
         prompt: videoPrompt,
         size: "720x1280",
       }),
@@ -69,7 +75,20 @@ Deno.serve(async (req) => {
 
     console.log(`[proxy-openai-start-video] Job created: ${jobId}`);
 
-    return jsonResponse(successResponse({ jobId, status: "processing" }));
+    const usedModel = jobData.model ?? MODEL;
+    // Duration (seconds) may be returned; cost is estimated on completion
+    const durationSeconds = jobData.duration ?? null;
+    const estimatedCostUsd = durationSeconds
+      ? Math.round((SORA_PRICING[usedModel] ?? 0.030) * durationSeconds * 1_000_000) / 1_000_000
+      : null;
+
+    return jsonResponse(successResponse({
+      jobId,
+      status: "processing",
+      model: usedModel,
+      tokens_used: { prompt: 0, completion: 0, total: 0 },
+      cost_usd: estimatedCostUsd,
+    }));
   } catch (error) {
     console.error("[proxy-openai-start-video] Error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
