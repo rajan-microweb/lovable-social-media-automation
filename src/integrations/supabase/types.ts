@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       platform_integrations: {
         Row: {
+          cost: Json | null
           created_at: string
           credentials: Json
           credentials_encrypted: boolean | null
@@ -27,6 +28,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          cost?: Json | null
           created_at?: string
           credentials: Json
           credentials_encrypted?: boolean | null
@@ -38,6 +40,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          cost?: Json | null
           created_at?: string
           credentials?: Json
           credentials_encrypted?: boolean | null

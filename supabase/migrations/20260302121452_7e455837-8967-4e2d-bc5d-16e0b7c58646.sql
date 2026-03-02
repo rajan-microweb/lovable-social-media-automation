@@ -1,0 +1,2 @@
+ALTER TABLE public.platform_integrations
+ADD COLUMN IF NOT EXISTS cost JSONB DEFAULT NULL;

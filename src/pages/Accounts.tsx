@@ -52,6 +52,9 @@ interface OpenAIAccountMeta {
   }>;
 }
 
+interface ApiCostModel { model: string; cost: string; }
+interface ApiCost { models: ApiCostModel[]; total_cost: string; }
+
 interface ConnectedAccount {
   id: string;
   platform: string;
@@ -63,6 +66,7 @@ interface ConnectedAccount {
   platformColor: string;
   tokenExpiration?: TokenExpirationInfo;
   openaiMetadata?: OpenAIAccountMeta;
+  apiCost?: ApiCost | null;
 }
 
 interface PlatformConfig {
@@ -83,6 +87,11 @@ interface LoginActivitySession {
     linkedinId: string;
   }[];
 }
+
+const formatApiCost = (cost: string) => {
+  const n = parseFloat(cost);
+  return isNaN(n) ? '$0.00000' : `$${n.toFixed(5)}`;
+};
 
 export default function Accounts() {
   const { user } = useAuth();
@@ -240,7 +249,7 @@ export default function Accounts() {
 
     const { data, error } = await supabase
       .from("platform_integrations")
-      .select("id, platform_name, credentials, metadata")
+      .select("id, platform_name, credentials, metadata, cost")
       .eq("user_id", user.id)
       .eq("status", "active");
 
@@ -282,6 +291,7 @@ export default function Accounts() {
               createdAt: personalInfo?.created_at || null,
               organizations: Array.isArray(orgs) ? orgs : [],
             },
+            apiCost: (integration as any).cost as ApiCost | null,
           });
           return;
         }
@@ -938,152 +948,36 @@ export default function Accounts() {
                               </p>
                             )}
 
-                            {/* Usage & Balance Section */}
-                            <div className="pt-2 border-t border-border/50">
-                              <Collapsible
-                                open={usagePanelOpen}
-                                onOpenChange={(open) => {
-                                  setUsagePanelOpen(open);
-                                  if (open && !openaiUsage && !loadingUsage) {
-                                    fetchOpenAIUsage();
-                                  }
-                                }}
+                            {/* API Cost Tracking Section */}
+                            <div className="pt-2 border-t border-border/50 space-y-2">
+                              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                                <BarChart2 className="h-3.5 w-3.5" />
+                                API Cost Tracking
+                              </p>
+                              {account.apiCost && account.apiCost.models.length > 0 ? (
+                                <div className="space-y-2">
+                                  {account.apiCost.models.map((m, i) => (
+                                    <div key={i} className="flex items-center justify-between text-sm">
+                                      <span className="text-muted-foreground truncate">{m.model}</span>
+                                      <span className="font-mono text-xs font-medium">{formatApiCost(m.cost)}</span>
+                                    </div>
+                                  ))}
+                                  <div className="flex items-center justify-between text-sm pt-2 border-t border-border/50">
+                                    <span className="font-medium">Total</span>
+                                    <span className="font-mono text-sm font-semibold text-primary">{formatApiCost(account.apiCost.total_cost)}</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground italic">No usage tracked yet</p>
+                              )}
+                              <a
+                                href="https://platform.openai.com/usage"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
                               >
-                                <CollapsibleTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="w-full justify-between gap-2 px-0 hover:bg-transparent text-muted-foreground hover:text-foreground">
-                                    <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider">
-                                      <BarChart2 className="h-3.5 w-3.5" />
-                                      Usage & Balance
-                                    </span>
-                                    <span className="text-xs">{usagePanelOpen ? "▲" : "▼"}</span>
-                                  </Button>
-                                </CollapsibleTrigger>
-                                <CollapsibleContent className="pt-2 space-y-3">
-                                  {loadingUsage ? (
-                                    <div className="flex items-center justify-center py-6">
-                                      <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
-                                      <span className="ml-2 text-xs text-muted-foreground">Loading usage data…</span>
-                                    </div>
-                                  ) : openaiUsage === null ? null : !openaiUsage.available ? (
-                                    <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-                                      <div className="flex items-start gap-3">
-                                        <div className="p-2 rounded-lg bg-muted shrink-0">
-                                          <BarChart2 className="h-4 w-4 text-muted-foreground" />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <p className="text-sm font-medium">Usage data unavailable via API</p>
-                                          <p className="text-xs text-muted-foreground leading-relaxed">
-                                            OpenAI's billing API isn't accessible for this account type (common for accounts created after 2023). View your usage and credits directly on the OpenAI platform.
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <div className="flex flex-col gap-2">
-                                        <a
-                                          href="https://platform.openai.com/usage"
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="w-full"
-                                        >
-                                          <Button variant="outline" size="sm" className="w-full gap-2">
-                                            <TrendingUp className="h-3.5 w-3.5" />
-                                            View Usage History
-                                            <ExternalLink className="h-3 w-3 ml-auto" />
-                                          </Button>
-                                        </a>
-                                        <a
-                                          href="https://platform.openai.com/settings/organization/billing"
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="w-full"
-                                        >
-                                          <Button variant="outline" size="sm" className="w-full gap-2">
-                                            <BarChart2 className="h-3.5 w-3.5" />
-                                            View Billing & Credits
-                                            <ExternalLink className="h-3 w-3 ml-auto" />
-                                          </Button>
-                                        </a>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      {/* Balance Bar */}
-                                      {openaiUsage.subscription?.hard_limit_usd != null && (
-                                        <div className="space-y-2">
-                                          <div className="flex items-center justify-between text-xs">
-                                            <span className="font-medium text-muted-foreground uppercase tracking-wider">Credit Usage</span>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-5 w-5"
-                                              onClick={fetchOpenAIUsage}
-                                              disabled={loadingUsage}
-                                            >
-                                              <RefreshCw className={`h-3 w-3 ${loadingUsage ? "animate-spin" : ""}`} />
-                                            </Button>
-                                          </div>
-                                          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                                            <span>Used: ${openaiUsage.usage?.total_usage_usd?.toFixed(4) ?? "0.00"}</span>
-                                            <span>Limit: ${openaiUsage.subscription.hard_limit_usd.toFixed(2)}</span>
-                                          </div>
-                                          <Progress
-                                            value={Math.min(
-                                              100,
-                                              ((openaiUsage.usage?.total_usage_usd ?? 0) /
-                                                openaiUsage.subscription.hard_limit_usd) *
-                                                100,
-                                            )}
-                                            className="h-2"
-                                          />
-                                          <p className="text-xs text-muted-foreground">
-                                            Plan: {openaiUsage.subscription.plan}
-                                          </p>
-                                        </div>
-                                      )}
-
-                                      {/* 30-day usage chart */}
-                                      {openaiUsage.usage && openaiUsage.usage.daily.length > 0 && (
-                                        <div className="space-y-1">
-                                          <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                            <TrendingUp className="h-3 w-3" />
-                                            Last 30 Days
-                                          </div>
-                                          <div className="h-[110px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                              <BarChart data={openaiUsage.usage.daily} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
-                                                <XAxis
-                                                  dataKey="date"
-                                                  tick={{ fontSize: 9 }}
-                                                  tickFormatter={(v) => v.slice(5)}
-                                                  interval="preserveStartEnd"
-                                                />
-                                                <YAxis tick={{ fontSize: 9 }} tickFormatter={(v) => `$${v}`} />
-                                                <Tooltip
-                                                  formatter={(value: number) => [`$${value.toFixed(4)}`, "Cost"]}
-                                                  labelStyle={{ fontSize: 10 }}
-                                                  contentStyle={{ fontSize: 10 }}
-                                                />
-                                                <Bar dataKey="cost_usd" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
-                                              </BarChart>
-                                            </ResponsiveContainer>
-                                          </div>
-                                          <a
-                                            href="https://platform.openai.com/usage"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
-                                          >
-                                            Full details on OpenAI <ExternalLink className="h-3 w-3" />
-                                          </a>
-                                        </div>
-                                      )}
-
-                                      {openaiUsage.usage && openaiUsage.usage.daily.length === 0 && (
-                                        <p className="text-xs text-muted-foreground text-center py-2">No usage in the last 30 days.</p>
-                                      )}
-                                    </>
-                                  )}
-                                </CollapsibleContent>
-                              </Collapsible>
+                                View on OpenAI <ExternalLink className="h-3 w-3" />
+                              </a>
                             </div>
                           </CardContent>
                         </Card>
