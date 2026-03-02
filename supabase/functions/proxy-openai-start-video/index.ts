@@ -31,11 +31,11 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createSupabaseClient();
-    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+    const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
       supabase, user_id, "openai"
     );
 
-    if (credError || !credentials) {
+    if (credError || !credentials || !integration) {
       return jsonResponse(errorResponse(credError || "OpenAI integration not found"), 404);
     }
 
@@ -76,11 +76,32 @@ Deno.serve(async (req) => {
     console.log(`[proxy-openai-start-video] Job created: ${jobId}`);
 
     const usedModel = jobData.model ?? MODEL;
-    // Duration (seconds) may be returned; cost is estimated on completion
     const durationSeconds = jobData.duration ?? null;
     const estimatedCostUsd = durationSeconds
       ? Math.round((SORA_PRICING[usedModel] ?? 0.030) * durationSeconds * 1_000_000) / 1_000_000
       : null;
+
+    // Store the pending job in platform_integrations.metadata (same pattern as image jobs)
+    const existingMetadata = (integration.metadata as Record<string, unknown>) ?? {};
+    const videoJobs = (existingMetadata.video_jobs as Record<string, unknown>) ?? {};
+    const updatedMetadata = {
+      ...existingMetadata,
+      video_jobs: {
+        ...videoJobs,
+        [jobId]: {
+          status: "processing",
+          model: usedModel,
+          cost_usd: estimatedCostUsd,
+          tokens_used: { prompt: 0, completion: 0, total: 0 },
+          created_at: new Date().toISOString(),
+        },
+      },
+    };
+
+    await supabase
+      .from("platform_integrations")
+      .update({ metadata: updatedMetadata })
+      .eq("id", integration.id);
 
     return jsonResponse(successResponse({
       jobId,
