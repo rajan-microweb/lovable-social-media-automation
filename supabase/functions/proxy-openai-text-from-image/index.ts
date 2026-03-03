@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
 
     const userPrompt = prompt || "Analyze this image and generate engaging social media content. Include a caption, description, and relevant hashtags.";
 
-    const MODEL = "gpt-4o";
+    const MODEL = "gpt-4o-mini";
     console.log("[proxy-openai-text-from-image] Calling OpenAI vision...");
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
