@@ -105,9 +105,8 @@ export default function CreatePost() {
   const [pdfUrl, setPdfUrl] = useState("");
   const [mediaUploading, setMediaUploading] = useState(false);
 
-  // Carousel state - multiple images
+  // Carousel state - multiple images (all stored as persistent bucket URLs)
   const [carouselImages, setCarouselImages] = useState<string[]>([]);
-  const [carouselFiles, setCarouselFiles] = useState<File[]>([]);
   const [carouselGenerating, setCarouselGenerating] = useState(false);
   const [carouselAiPrompt, setCarouselAiPrompt] = useState("");
   const [carouselAiMode, setCarouselAiMode] = useState<"prompt" | "fromText">("prompt");
@@ -156,7 +155,6 @@ export default function CreatePost() {
       // Reset carousel images when switching away from carousel
       if (typeOfPost !== "carousel") {
         setCarouselImages([]);
-        setCarouselFiles([]);
       }
     } else {
       setAvailablePlatforms([]);
@@ -328,29 +326,22 @@ export default function CreatePost() {
 
       // Handle carousel separately - multiple images stored as comma-separated URLs
       if (typeOfPost === "carousel") {
-        const allCarouselUrls: string[] = [...carouselImages];
-
-        // Upload any carousel files not yet uploaded
-        for (const file of carouselFiles) {
-          const url = await uploadFile(file, "images");
-          allCarouselUrls.push(url);
-        }
-
-        if (allCarouselUrls.length === 0) {
+        // All carousel images are already uploaded to storage
+        if (carouselImages.length === 0) {
           toast.error("Please add at least one image for the carousel");
           setLoading(false);
           setUploading(false);
           return;
         }
 
-        if (allCarouselUrls.length > 10) {
+        if (carouselImages.length > 10) {
           toast.error("Maximum 10 images allowed for carousel");
           setLoading(false);
           setUploading(false);
           return;
         }
 
-        uploadedUrl = allCarouselUrls.join(",");
+        uploadedUrl = carouselImages.join(",");
       } else if (imageUrl || videoUrl || pdfUrl) {
         // Use the already-stored bucket URL
         if (typeOfPost === "image") {
@@ -461,48 +452,61 @@ export default function CreatePost() {
     }
   };
 
-  // State for conversion progress
+  // State for conversion / upload progress
   const [isConverting, setIsConverting] = useState(false);
+  const [carouselUploading, setCarouselUploading] = useState(false);
 
   // Carousel-specific functions
+  // Auto-uploads every selected file to storage so we always have persistent URLs
   const handleCarouselFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
     const remaining = 10 - getTotalCarouselCount();
+    const toProcess = files.slice(0, remaining);
 
     if (files.length > remaining) {
-      toast.error(`You can only add ${remaining} more images`);
-      return;
+      toast.error(`You can only add ${remaining} more image${remaining !== 1 ? "s" : ""}`);
     }
 
-    // Check if Instagram carousel - convert non-JPEG files
-    const isInstaCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
+    const isInstaCarousel = platforms.includes("instagram");
 
-    if (isInstaCarousel) {
-      setIsConverting(true);
-      const convertedFiles: File[] = [];
-
-      for (const file of files) {
-        // Convert to JPEG if needed
-        if (isJpegFile(file)) {
-          convertedFiles.push(file);
-        } else {
-          toast.info(`Converting ${file.name} to JPEG...`);
-          try {
-            const jpegFile = await convertFileToJpeg(file);
-            convertedFiles.push(jpegFile);
-          } catch (convError) {
-            console.error("Conversion error:", convError);
-            toast.error(`Failed to convert ${file.name} to JPEG`);
-          }
+    setIsConverting(true);
+    const readyFiles: File[] = [];
+    for (const file of toProcess) {
+      if (isInstaCarousel && !isJpegFile(file)) {
+        toast.info(`Converting ${file.name} to JPEG…`);
+        try {
+          readyFiles.push(await convertFileToJpeg(file));
+        } catch {
+          toast.error(`Failed to convert ${file.name}`);
         }
+      } else {
+        readyFiles.push(file);
       }
-
-      setCarouselFiles([...carouselFiles, ...convertedFiles]);
-      setIsConverting(false);
-    } else {
-      // Non-Instagram carousel - just add files directly
-      setCarouselFiles([...carouselFiles, ...files]);
     }
+    setIsConverting(false);
+
+    // Upload each file to storage immediately
+    setCarouselUploading(true);
+    const uploadedUrls: string[] = [];
+    for (const file of readyFiles) {
+      try {
+        const url = await uploadFile(file, "carousel");
+        uploadedUrls.push(url);
+      } catch (err) {
+        console.error("Carousel upload error:", err);
+        toast.error(`Failed to upload ${file.name}`);
+      }
+    }
+    setCarouselUploading(false);
+
+    if (uploadedUrls.length) {
+      setCarouselImages((prev) => [...prev, ...uploadedUrls]);
+      toast.success(`${uploadedUrls.length} image${uploadedUrls.length !== 1 ? "s" : ""} uploaded to storage`);
+    }
+    // Reset input so same file can be re-selected
+    e.target.value = "";
   };
 
   const generateCarouselAiImage = async () => {
@@ -594,14 +598,10 @@ export default function CreatePost() {
     }
   };
 
-  const getTotalCarouselCount = () => carouselImages.length + carouselFiles.length;
+  const getTotalCarouselCount = () => carouselImages.length;
 
   const removeCarouselImage = (index: number) => {
-    if (index < carouselImages.length) {
-      setCarouselImages(carouselImages.filter((_, i) => i !== index));
-    } else {
-      setCarouselFiles(carouselFiles.filter((_, i) => i !== index - carouselImages.length));
-    }
+    setCarouselImages(carouselImages.filter((_, i) => i !== index));
   };
 
   // Field visibility logic
@@ -934,40 +934,31 @@ export default function CreatePost() {
                           multiple
                           accept="image/*"
                           onChange={handleCarouselFilesChange}
-                          disabled={isConverting || getTotalCarouselCount() >= 10}
+                          disabled={isConverting || carouselUploading || getTotalCarouselCount() >= 10}
                           className="mt-1 block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
                         />
+                        {(isConverting || carouselUploading) && (
+                          <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>{isConverting ? "Converting to JPEG…" : "Uploading to storage…"}</span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Preview grid */}
-                      {getTotalCarouselCount() > 0 ? (
+                      {/* Preview grid — all images are bucket URLs */}
+                      {carouselImages.length > 0 ? (
                         <div className="grid grid-cols-5 gap-2">
                           {carouselImages.map((url, idx) => (
-                            <div key={`img-${idx}`} className="relative">
-                              <img src={url} alt={`Carousel ${idx}`} className="w-full h-20 object-cover rounded" />
+                            <div key={`img-${idx}`} className="relative group">
+                              <img src={url} alt={`Slide ${idx + 1}`} className="w-full h-20 object-cover rounded" />
                               <button
                                 type="button"
                                 onClick={() => removeCarouselImage(idx)}
-                                className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 text-white"
+                                className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
                               >
                                 <X size={12} />
                               </button>
-                            </div>
-                          ))}
-                          {carouselFiles.map((file, idx) => (
-                            <div key={`file-${idx}`} className="relative">
-                              <img
-                                src={URL.createObjectURL(file)}
-                                alt={`File ${idx}`}
-                                className="w-full h-20 object-cover rounded"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeCarouselImage(idx + carouselImages.length)}
-                                className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 text-white"
-                              >
-                                <X size={12} />
-                              </button>
+                              <span className="absolute bottom-1 left-1 bg-black/50 text-white text-[10px] px-1 rounded">{idx + 1}</span>
                             </div>
                           ))}
                         </div>
