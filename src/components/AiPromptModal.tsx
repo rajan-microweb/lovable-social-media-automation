@@ -160,13 +160,10 @@ const SUB_OPTIONS_MAP: Record<string, SubOption[]> = {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const VIDEO_POLL_INTERVAL_MS = 10_000;
-const VIDEO_MAX_POLL_DURATION_MS = 5 * 60 * 1000;
-const CHECK_VIDEO_WEBHOOK = "https://n8n.srv1248804.hstgr.cloud/webhook/check-video-status";
-
-const IMAGE_POLL_INTERVAL_MS = 5_000;
-const IMAGE_MAX_POLL_DURATION_MS = 3 * 60 * 1000;
-const CHECK_IMAGE_WEBHOOK = "https://n8n.srv1248804.hstgr.cloud/webhook/check-image-status";
+// n8n now polls internally and responds once completed — no client-side polling needed.
+// We just wait on the single main webhook response (can take up to 5 min for video).
+const IMAGE_MAX_WAIT_MS = 4 * 60 * 1000;   // 4 min timeout
+const VIDEO_MAX_WAIT_MS = 6 * 60 * 1000;   // 6 min timeout
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -220,7 +217,6 @@ export function AiPromptModal({
   const [previewType, setPreviewType] = useState<"image" | "video" | null>(null);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
 
@@ -248,7 +244,6 @@ export function AiPromptModal({
   }, [open, fieldType]);
 
   const cleanupPolling = useCallback(() => {
-    if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
     if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
     setElapsed(0);
   }, []);
@@ -259,92 +254,11 @@ export function AiPromptModal({
 
   const startElapsedTimer = useCallback(() => {
     startTimeRef.current = Date.now();
+    if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
     elapsedIntervalRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1000);
   }, []);
-
-  const pollImageStatus = useCallback(
-    (jobId: string): Promise<string> =>
-      new Promise((resolve, reject) => {
-        startTimeRef.current = Date.now();
-        // Clear any existing interval before starting
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = setInterval(async () => {
-          if (Date.now() - startTimeRef.current >= IMAGE_MAX_POLL_DURATION_MS) {
-            if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-            if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
-            reject(new Error("Image generation timed out after 3 minutes"));
-            return;
-          }
-          try {
-            const res = await fetch(CHECK_IMAGE_WEBHOOK, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ jobId, userId: context?.userId }),
-            });
-            if (!res.ok) return;
-            const raw = await res.json();
-            // Handle both flat and nested response shapes from n8n
-            const payload = Array.isArray(raw) ? raw[0] : raw;
-            const status = payload?.status ?? payload?.data?.status ?? "";
-            const imageUrl = payload?.imageUrl ?? payload?.data?.imageUrl ?? payload?.image_url ?? payload?.url ?? "";
-            console.log("[pollImageStatus] status:", status, "imageUrl:", imageUrl);
-            if (status === "completed" && imageUrl) {
-              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
-              resolve(imageUrl);
-            } else if (status === "failed") {
-              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
-              reject(new Error(payload?.error ?? payload?.data?.error ?? "Image generation failed"));
-            }
-          } catch (e) { console.warn("[pollImageStatus] fetch error, will retry:", e); }
-        }, IMAGE_POLL_INTERVAL_MS);
-      }),
-    [context?.userId]
-  );
-
-  const pollVideoStatus = useCallback(
-    (jobId: string): Promise<string> =>
-      new Promise((resolve, reject) => {
-        startTimeRef.current = Date.now();
-        // Clear any existing interval before starting
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = setInterval(async () => {
-          if (Date.now() - startTimeRef.current >= VIDEO_MAX_POLL_DURATION_MS) {
-            if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-            if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
-            reject(new Error("Video generation timed out after 5 minutes"));
-            return;
-          }
-          try {
-            const res = await fetch(CHECK_VIDEO_WEBHOOK, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ jobId, userId: context?.userId }),
-            });
-            if (!res.ok) return;
-            const raw = await res.json();
-            // Handle both flat and nested response shapes from n8n
-            const payload = Array.isArray(raw) ? raw[0] : raw;
-            const status = payload?.status ?? payload?.data?.status ?? "";
-            const videoUrl = payload?.videoUrl ?? payload?.data?.videoUrl ?? payload?.video_url ?? payload?.url ?? "";
-            console.log("[pollVideoStatus] status:", status, "videoUrl:", videoUrl);
-            if (status === "completed" && videoUrl) {
-              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
-              resolve(videoUrl);
-            } else if (status === "failed") {
-              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
-              reject(new Error(payload?.error ?? "Video generation failed"));
-            }
-          } catch (e) { console.warn("[pollVideoStatus] fetch error, will retry:", e); }
-        }, VIDEO_POLL_INTERVAL_MS);
-      }),
-    [context?.userId]
-  );
 
   // ── Upload helper ────────────────────────────────────────────────────────
 
@@ -425,111 +339,96 @@ export function AiPromptModal({
     setPreviewType(null);
     setPendingUrl(null);
 
+    const isImage = selectedOption.key === "image:prompt" || selectedOption.key === "image:fromText";
+    const isVideo = selectedOption.key === "video:prompt" || selectedOption.key === "video:fromText";
+
+    // Start elapsed timer for image/video — n8n blocks until done, so we just show progress
+    if (isImage || isVideo) {
+      startElapsedTimer();
+      setUploadProgress(isVideo ? "Generating video... this may take a few minutes" : "Generating image...");
+    }
+
     try {
       const payload = buildPayload(selectedOption);
-      const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+
+      // Use AbortController so we can timeout cleanly
+      const maxWait = isVideo ? VIDEO_MAX_WAIT_MS : isImage ? IMAGE_MAX_WAIT_MS : 60_000;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), maxWait);
+
+      let response: Response;
+      try {
+        response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
       if (!response.ok) throw new Error("Failed to generate content");
 
-      const data = await response.json();
+      // Stop elapsed timer once response arrives
+      if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
+
+      const raw = await response.json();
+      // n8n may wrap in array
+      const data = Array.isArray(raw) ? raw[0] : raw;
+
+      console.log("[AiPromptModal] Response:", JSON.stringify(data));
 
       // ── TEXT result ──
-      if (
-        selectedOption.key === "text:prompt" ||
-        selectedOption.key === "text:fromImage" ||
-        selectedOption.key === "text:fromVideo"
-      ) {
-        if (!data.text) throw new Error(`No text returned. Response: ${JSON.stringify(data)}`);
-        onGenerate(data.text);
+      if (selectedOption.key === "text:prompt" || selectedOption.key === "text:fromImage" || selectedOption.key === "text:fromVideo") {
+        const text = data.text ?? data.data?.text ?? "";
+        if (!text) throw new Error(`No text returned. Response: ${JSON.stringify(data)}`);
+        onGenerate(text);
         toast.success("Text generated successfully");
         setInputValue("");
         onClose();
+        return;
       }
 
       // ── IMAGE result ──
-      else if (
-        selectedOption.key === "image:prompt" ||
-        selectedOption.key === "image:fromText"
-      ) {
-        const jobId = data.jobId || data.data?.jobId;
-        if (jobId) {
-          // Async path — show progress bar and poll
-          setUploadProgress("Generating image...");
-          startElapsedTimer();
-          const imageUrl = await pollImageStatus(jobId);
-          // Stop polling, upload to storage
-          setUploadProgress("Uploading image to storage...");
-          const permanent = await uploadAiMedia(imageUrl.trim(), "image");
-          // Show preview — don't close yet
-          setPreviewUrl(permanent);
-          setPreviewType("image");
-          setPendingUrl(permanent);
-          setUploadProgress("");
-          setLoading(false);
-          toast.success("Image generated successfully");
-        } else {
-          // Synchronous fallback
-          const imageUrl = data.imageUrl || data.image_url || data.data?.imageUrl || data.url || "";
-          if (!imageUrl) throw new Error(`No image URL returned. Response: ${JSON.stringify(data)}`);
-          setUploadProgress("Uploading image to storage...");
-          const permanent = await uploadAiMedia(imageUrl.trim(), "image");
-          setPreviewUrl(permanent);
-          setPreviewType("image");
-          setPendingUrl(permanent);
-          setUploadProgress("");
-          setLoading(false);
-          toast.success("Image generated successfully");
-        }
-        return; // Don't fall through to finally close
+      if (isImage) {
+        const imageUrl = data.imageUrl ?? data.image_url ?? data.data?.imageUrl ?? data.url ?? "";
+        if (!imageUrl) throw new Error(`No image URL returned. Response: ${JSON.stringify(data)}`);
+        setUploadProgress("Uploading image to storage...");
+        const permanent = await uploadAiMedia(imageUrl.trim(), "image");
+        setPreviewUrl(permanent);
+        setPreviewType("image");
+        setPendingUrl(permanent);
+        setUploadProgress("");
+        setLoading(false);
+        toast.success("Image generated successfully");
+        return;
       }
 
       // ── VIDEO result ──
-      else if (
-        selectedOption.key === "video:prompt" ||
-        selectedOption.key === "video:fromText"
-      ) {
-        const jobId = data.jobId || data.data?.jobId;
-        if (!jobId) {
-          const videoUrl = data.videoUrl || data.video_url || data.data?.videoUrl || data.url || "";
-          if (!videoUrl) throw new Error(`No jobId or videoUrl returned. Response: ${JSON.stringify(data)}`);
-          const permanent = videoUrl.includes("supabase.co/storage")
-            ? videoUrl
-            : await (async () => { setUploadProgress("Uploading video to storage..."); return uploadAiMedia(videoUrl.trim(), "video"); })();
-          setPreviewUrl(permanent);
-          setPreviewType("video");
-          setPendingUrl(permanent);
-          setUploadProgress("");
-          setLoading(false);
-          toast.success("Video generated successfully");
-        } else {
-          setUploadProgress("Generating video...");
-          startElapsedTimer();
-          const videoUrl = await pollVideoStatus(jobId);
-          const permanent = videoUrl.includes("supabase.co/storage")
-            ? videoUrl
-            : await (async () => { setUploadProgress("Uploading video to storage..."); return uploadAiMedia(videoUrl.trim(), "video"); })();
-          // Show preview — don't close yet
-          setPreviewUrl(permanent);
-          setPreviewType("video");
-          setPendingUrl(permanent);
-          setUploadProgress("");
-          setLoading(false);
-          toast.success("Video generated successfully");
-        }
-        return; // Don't fall through to finally close
+      if (isVideo) {
+        const videoUrl = data.videoUrl ?? data.video_url ?? data.data?.videoUrl ?? data.url ?? "";
+        if (!videoUrl) throw new Error(`No video URL returned. Response: ${JSON.stringify(data)}`);
+        const permanent = videoUrl.includes("supabase.co/storage")
+          ? videoUrl
+          : await (async () => { setUploadProgress("Uploading video to storage..."); return uploadAiMedia(videoUrl.trim(), "video"); })();
+        setPreviewUrl(permanent);
+        setPreviewType("video");
+        setPendingUrl(permanent);
+        setUploadProgress("");
+        setLoading(false);
+        toast.success("Video generated successfully");
+        return;
       }
 
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Failed to generate content";
+      const msg = error instanceof Error
+        ? (error.name === "AbortError" ? "Generation timed out — please try again" : error.message)
+        : "Failed to generate content";
       toast.error(msg);
       setLoading(false);
       setUploadProgress("");
-      // Only stop intervals on error — not here for async image/video (they self-cleanup)
-      if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-      if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
+      cleanupPolling();
     }
   };
 
@@ -561,7 +460,7 @@ export function AiPromptModal({
   const handleBack = () => { setStep(1); setSelectedOption(null); setInputValue(""); setPreviewUrl(null); setPreviewType(null); setPendingUrl(null); };
 
   const isImageOrVideo = selectedOption?.key.startsWith("image:") || selectedOption?.key.startsWith("video:");
-  const progressMax = selectedOption?.key.startsWith("video:") ? VIDEO_MAX_POLL_DURATION_MS / 1000 : IMAGE_MAX_POLL_DURATION_MS / 1000;
+  const progressMax = selectedOption?.key.startsWith("video:") ? VIDEO_MAX_WAIT_MS / 1000 : IMAGE_MAX_WAIT_MS / 1000;
   const progressPercent = Math.min((elapsed / progressMax) * 100, 95); // cap at 95 until done
 
   // ── Computed for step 2 ──────────────────────────────────────────────────
