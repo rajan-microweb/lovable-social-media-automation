@@ -214,7 +214,11 @@ export function AiPromptModal({
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
-  const [videoElapsed, setVideoElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  // Preview state: once generation is done, show preview before closing
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<"image" | "video" | null>(null);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -224,8 +228,8 @@ export function AiPromptModal({
   const rawOptions = SUB_OPTIONS_MAP[fieldType] ?? [];
   const typeOfPost = context?.typeOfPost ?? "";
   const options = rawOptions.filter((opt) => {
-    if (!opt.validPostTypes) return true; // no restriction
-    if (!typeOfPost) return false;        // post type not set yet
+    if (!opt.validPostTypes) return true;
+    if (!typeOfPost) return false;
     return opt.validPostTypes.includes(typeOfPost);
   });
 
@@ -236,26 +240,37 @@ export function AiPromptModal({
       setSelectedOption(null);
       setInputValue("");
       setUploadProgress("");
+      setPreviewUrl(null);
+      setPreviewType(null);
+      setPendingUrl(null);
+      setElapsed(0);
     }
   }, [open, fieldType]);
 
   const cleanupPolling = useCallback(() => {
     if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
     if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
-    setVideoElapsed(0);
+    setElapsed(0);
   }, []);
 
   useEffect(() => () => cleanupPolling(), [cleanupPolling]);
 
   // ── Polling ─────────────────────────────────────────────────────────────
 
+  const startElapsedTimer = useCallback(() => {
+    startTimeRef.current = Date.now();
+    elapsedIntervalRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
+  }, []);
+
   const pollImageStatus = useCallback(
     (jobId: string): Promise<string> =>
       new Promise((resolve, reject) => {
-        const start = Date.now();
+        startTimeRef.current = Date.now();
         pollIntervalRef.current = setInterval(async () => {
-          if (Date.now() - start >= IMAGE_MAX_POLL_DURATION_MS) {
-            if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+          if (Date.now() - startTimeRef.current >= IMAGE_MAX_POLL_DURATION_MS) {
+            cleanupPolling();
             reject(new Error("Image generation timed out after 3 minutes"));
             return;
           }
@@ -270,27 +285,21 @@ export function AiPromptModal({
             const status = data.status || data.data?.status;
             const imageUrl = data.imageUrl || data.data?.imageUrl || data.image_url || "";
             if (status === "completed" && imageUrl) {
-              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              cleanupPolling();
               resolve(imageUrl);
             } else if (status === "failed") {
-              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              cleanupPolling();
               reject(new Error(data.error || data.data?.error || "Image generation failed"));
             }
           } catch { /* keep polling */ }
         }, IMAGE_POLL_INTERVAL_MS);
       }),
-    [context?.userId]
+    [cleanupPolling, context?.userId]
   );
 
   const pollVideoStatus = useCallback(
     (jobId: string): Promise<string> =>
       new Promise((resolve, reject) => {
-        startTimeRef.current = Date.now();
-
-        elapsedIntervalRef.current = setInterval(() => {
-          setVideoElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-        }, 1000);
-
         pollIntervalRef.current = setInterval(async () => {
           if (Date.now() - startTimeRef.current >= VIDEO_MAX_POLL_DURATION_MS) {
             cleanupPolling();
@@ -390,6 +399,9 @@ export function AiPromptModal({
 
     setLoading(true);
     setUploadProgress("Generating content...");
+    setPreviewUrl(null);
+    setPreviewType(null);
+    setPendingUrl(null);
 
     try {
       const payload = buildPayload(selectedOption);
@@ -411,6 +423,8 @@ export function AiPromptModal({
         if (!data.text) throw new Error(`No text returned. Response: ${JSON.stringify(data)}`);
         onGenerate(data.text);
         toast.success("Text generated successfully");
+        setInputValue("");
+        onClose();
       }
 
       // ── IMAGE result ──
@@ -420,21 +434,34 @@ export function AiPromptModal({
       ) {
         const jobId = data.jobId || data.data?.jobId;
         if (jobId) {
-          // Async path — poll for result
+          // Async path — show progress bar and poll
           setUploadProgress("Generating image...");
+          startElapsedTimer();
           const imageUrl = await pollImageStatus(jobId);
+          // Stop polling, upload to storage
           setUploadProgress("Uploading image to storage...");
           const permanent = await uploadAiMedia(imageUrl.trim(), "image");
-          onGenerate(permanent);
+          // Show preview — don't close yet
+          setPreviewUrl(permanent);
+          setPreviewType("image");
+          setPendingUrl(permanent);
+          setUploadProgress("");
+          setLoading(false);
+          toast.success("Image generated successfully");
         } else {
-          // Synchronous fallback (backwards compat)
+          // Synchronous fallback
           const imageUrl = data.imageUrl || data.image_url || data.data?.imageUrl || data.url || "";
           if (!imageUrl) throw new Error(`No image URL returned. Response: ${JSON.stringify(data)}`);
           setUploadProgress("Uploading image to storage...");
           const permanent = await uploadAiMedia(imageUrl.trim(), "image");
-          onGenerate(permanent);
+          setPreviewUrl(permanent);
+          setPreviewType("image");
+          setPendingUrl(permanent);
+          setUploadProgress("");
+          setLoading(false);
+          toast.success("Image generated successfully");
         }
-        toast.success("Image generated and stored successfully");
+        return; // Don't fall through to finally close
       }
 
       // ── VIDEO result ──
@@ -449,34 +476,59 @@ export function AiPromptModal({
           const permanent = videoUrl.includes("supabase.co/storage")
             ? videoUrl
             : await (async () => { setUploadProgress("Uploading video to storage..."); return uploadAiMedia(videoUrl.trim(), "video"); })();
-          onGenerate(permanent);
+          setPreviewUrl(permanent);
+          setPreviewType("video");
+          setPendingUrl(permanent);
+          setUploadProgress("");
+          setLoading(false);
+          toast.success("Video generated successfully");
         } else {
           setUploadProgress("Generating video...");
+          startElapsedTimer();
           const videoUrl = await pollVideoStatus(jobId);
           const permanent = videoUrl.includes("supabase.co/storage")
             ? videoUrl
             : await (async () => { setUploadProgress("Uploading video to storage..."); return uploadAiMedia(videoUrl.trim(), "video"); })();
-          onGenerate(permanent);
+          // Show preview — don't close yet
+          setPreviewUrl(permanent);
+          setPreviewType("video");
+          setPendingUrl(permanent);
+          setUploadProgress("");
+          setLoading(false);
+          toast.success("Video generated successfully");
         }
-        toast.success("Video generated successfully");
+        return; // Don't fall through to finally close
       }
 
-      setInputValue("");
-      onClose();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Failed to generate content";
       toast.error(msg);
-    } finally {
       setLoading(false);
       setUploadProgress("");
       cleanupPolling();
+    } finally {
+      // Only cleanup polling here (not loading — that's handled above for image/video)
+      cleanupPolling();
     }
+  };
+
+  // ── Use generated media ──────────────────────────────────────────────────
+
+  const handleUseResult = () => {
+    if (pendingUrl) {
+      onGenerate(pendingUrl);
+    }
+    setInputValue("");
+    setPreviewUrl(null);
+    setPreviewType(null);
+    setPendingUrl(null);
+    onClose();
   };
 
   // ── Close ────────────────────────────────────────────────────────────────
 
   const handleClose = () => {
-    if (!loading) { setInputValue(""); setStep(1); setSelectedOption(null); cleanupPolling(); onClose(); }
+    if (!loading) { setInputValue(""); setStep(1); setSelectedOption(null); setPreviewUrl(null); setPreviewType(null); setPendingUrl(null); cleanupPolling(); onClose(); }
   };
 
   const handleSelectOption = (opt: SubOption) => {
@@ -485,17 +537,18 @@ export function AiPromptModal({
     setStep(2);
   };
 
-  const handleBack = () => { setStep(1); setSelectedOption(null); setInputValue(""); };
+  const handleBack = () => { setStep(1); setSelectedOption(null); setInputValue(""); setPreviewUrl(null); setPreviewType(null); setPendingUrl(null); };
 
-  const videoProgressPercent = Math.min((videoElapsed / 300) * 100, 100);
+  const isImageOrVideo = selectedOption?.key.startsWith("image:") || selectedOption?.key.startsWith("video:");
+  const progressMax = selectedOption?.key.startsWith("video:") ? VIDEO_MAX_POLL_DURATION_MS / 1000 : IMAGE_MAX_POLL_DURATION_MS / 1000;
+  const progressPercent = Math.min((elapsed / progressMax) * 100, 95); // cap at 95 until done
 
   // ── Computed for step 2 ──────────────────────────────────────────────────
 
   const depValue = selectedOption ? getDependencyValue(selectedOption.dependency, context) : "";
   const hasDependency = selectedOption?.inputType === "auto" || selectedOption?.inputType === "mixed";
   const dependencyMissing = hasDependency && !depValue.trim();
-  // "mixed" = dependency URL required, prompt is optional; "prompt" = inputValue required; "auto" = URL required
-  const canGenerate = !loading && !dependencyMissing && (
+  const canGenerate = !loading && !dependencyMissing && !previewUrl && (
     selectedOption?.inputType === "prompt" ? inputValue.trim().length > 0 : true
   );
 
@@ -506,7 +559,7 @@ export function AiPromptModal({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            {step === 2 && (
+            {step === 2 && !previewUrl && (
               <button
                 onClick={handleBack}
                 disabled={loading}
@@ -518,19 +571,59 @@ export function AiPromptModal({
             <div className="flex-1">
               <DialogTitle>{title}</DialogTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Step {step} of 2 — {step === 1 ? "Choose a generation method" : selectedOption?.label}
+                {previewUrl
+                  ? "Preview — use or regenerate"
+                  : `Step ${step} of 2 — ${step === 1 ? "Choose a generation method" : selectedOption?.label}`}
               </p>
             </div>
             {/* Step dots */}
-            <div className="flex gap-1.5 pr-6">
-              <span className={cn("h-2 w-2 rounded-full transition-colors", step === 1 ? "bg-primary" : "bg-muted")} />
-              <span className={cn("h-2 w-2 rounded-full transition-colors", step === 2 ? "bg-primary" : "bg-muted")} />
-            </div>
+            {!previewUrl && (
+              <div className="flex gap-1.5 pr-6">
+                <span className={cn("h-2 w-2 rounded-full transition-colors", step === 1 ? "bg-primary" : "bg-muted")} />
+                <span className={cn("h-2 w-2 rounded-full transition-colors", step === 2 ? "bg-primary" : "bg-muted")} />
+              </div>
+            )}
           </div>
         </DialogHeader>
 
+        {/* ── Preview State ── */}
+        {previewUrl && previewType && (
+          <div className="space-y-4 mt-2">
+            <div className="rounded-xl overflow-hidden border bg-muted/30">
+              {previewType === "image" ? (
+                <img
+                  src={previewUrl}
+                  alt="Generated image"
+                  className="w-full object-contain max-h-72"
+                />
+              ) : (
+                <video
+                  src={previewUrl}
+                  controls
+                  className="w-full max-h-72"
+                  preload="metadata"
+                />
+              )}
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setPreviewUrl(null); setPreviewType(null); setPendingUrl(null); }}
+                disabled={loading}
+              >
+                Regenerate
+              </Button>
+              <Button type="button" onClick={handleUseResult}>
+                <Check className="mr-2 h-4 w-4" />
+                Use This {previewType === "image" ? "Image" : "Video"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ── Step 1: Option Grid ── */}
-        {step === 1 && (
+        {!previewUrl && step === 1 && (
           <div className="mt-2 space-y-3">
             {options.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
@@ -592,7 +685,7 @@ export function AiPromptModal({
         )}
 
         {/* ── Step 2: Input ── */}
-        {step === 2 && selectedOption && (
+        {!previewUrl && step === 2 && selectedOption && (
           <div className="space-y-4 mt-2">
             {/* Selected option badge */}
             <div className="flex items-center gap-2 rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
@@ -682,17 +775,20 @@ export function AiPromptModal({
               </div>
             )}
 
-            {/* Progress */}
+            {/* Progress — shown while generating image or video */}
             {uploadProgress && (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>
-                    {videoElapsed > 0 ? `${uploadProgress} (${videoElapsed}s elapsed)` : uploadProgress}
-                  </span>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>{uploadProgress}</span>
+                  </div>
+                  {elapsed > 0 && (
+                    <span className="text-xs tabular-nums">{elapsed}s</span>
+                  )}
                 </div>
-                {(selectedOption.key === "video:prompt" || selectedOption.key === "video:fromText") && videoElapsed > 0 && (
-                  <Progress value={videoProgressPercent} className="h-2" />
+                {isImageOrVideo && elapsed > 0 && (
+                  <Progress value={progressPercent} className="h-2" />
                 )}
               </div>
             )}
