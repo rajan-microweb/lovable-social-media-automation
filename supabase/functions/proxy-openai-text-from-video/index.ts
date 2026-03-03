@@ -52,10 +52,10 @@ Deno.serve(async (req) => {
       prompt ||
       "Analyze this video and generate engaging social media content. Include a caption, description, hooks, and relevant hashtags.";
 
-    const MODEL = "gpt-4.1";
-    console.log("[proxy-openai-text-from-video] Calling OpenAI Chat Completions API with video URL...");
+    const MODEL = "gpt-4o";
+    console.log("[proxy-openai-text-from-video] Calling OpenAI Responses API with video URL...");
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${openaiKey}`,
@@ -63,16 +63,19 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [
+        input: [
           {
             role: "user",
             content: [
-              { type: "text", text: userPrompt },
-              { type: "image_url", image_url: { url: videoUrl } },
+              { type: "input_text", text: userPrompt },
+              {
+                type: "input_video",
+                video_url: videoUrl,
+              },
             ],
           },
         ],
-        max_tokens: 1024,
+        max_output_tokens: 1024,
       }),
     });
 
@@ -83,15 +86,15 @@ Deno.serve(async (req) => {
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || data.output_text || data.output?.[0]?.content?.[0]?.text;
+    const text = data.output_text || data.output?.[0]?.content?.[0]?.text || data.choices?.[0]?.message?.content;
 
     if (!text) {
       return jsonResponse(errorResponse("No content returned from OpenAI"), 502);
     }
 
     const usedModel = data.model ?? MODEL;
-    const promptTokens = data.usage?.prompt_tokens ?? data.usage?.input_tokens ?? 0;
-    const completionTokens = data.usage?.completion_tokens ?? data.usage?.output_tokens ?? 0;
+    const promptTokens = data.usage?.input_tokens ?? data.usage?.prompt_tokens ?? 0;
+    const completionTokens = data.usage?.output_tokens ?? data.usage?.completion_tokens ?? 0;
     const totalTokens = data.usage?.total_tokens ?? promptTokens + completionTokens;
     const costUsd = calcCost(usedModel, promptTokens, completionTokens);
 
