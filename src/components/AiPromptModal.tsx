@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-  Loader2, ArrowLeft, FileText, Image, Video, Wand2, Type, Film, Check,
+  Loader2, ArrowLeft, FileText, Image, Wand2, Type, Film, Check,
   AlertCircle, ImageIcon, VideoIcon,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -40,7 +40,6 @@ interface AiPromptModalProps {
 type SubOptionKey =
   | "text:prompt"
   | "text:fromImage"
-  | "text:fromVideo"
   | "image:prompt"
   | "image:fromText"
   | "video:prompt"
@@ -90,19 +89,6 @@ const ALL_TEXT_OPTIONS: SubOption[] = [
     promptPlaceholder: "e.g. Write a caption with a professional tone and 3 hashtags",
     dependency: "image",
     validPostTypes: ["image", "carousel"],
-  },
-  {
-    key: "text:fromVideo",
-    icon: Video,
-    label: "Text from Video",
-    description: "Summarise or transcribe the uploaded video",
-    inputType: "mixed",
-    inputLabel: "Video source",
-    inputPlaceholder: "",
-    promptLabel: "Instructions (optional)",
-    promptPlaceholder: "e.g. Summarise this video in a short engaging caption",
-    dependency: "video",
-    validPostTypes: ["video", "shorts"],
   },
 ];
 
@@ -283,7 +269,6 @@ export function AiPromptModal({
   const GENERATION_TYPE_MAP: Record<SubOptionKey, string> = {
     "text:prompt":    "text",
     "text:fromImage": "textFromImage",
-    "text:fromVideo": "textFromVideo",
     "image:prompt":   "image",
     "image:fromText": "imageFromText",
     "video:prompt":   "video",
@@ -307,7 +292,6 @@ export function AiPromptModal({
     const map: Record<SubOptionKey, Record<string, unknown>> = {
       "text:prompt":    { textPrompt: inputValue },
       "text:fromImage": { mediaUrl, prompt: prompt || undefined },
-      "text:fromVideo": { mediaUrl, prompt: prompt || undefined },
       "image:prompt":   { imagePrompt: inputValue },
       "image:fromText": { text: mediaUrl },
       "video:prompt":   { videoPrompt: inputValue },
@@ -380,7 +364,7 @@ export function AiPromptModal({
       console.log("[AiPromptModal] Response:", JSON.stringify(data));
 
       // ── TEXT result ──
-      if (selectedOption.key === "text:prompt" || selectedOption.key === "text:fromImage" || selectedOption.key === "text:fromVideo") {
+      if (selectedOption.key === "text:prompt" || selectedOption.key === "text:fromImage") {
         const text = data.text ?? data.data?.text ?? "";
         if (!text) throw new Error(`No text returned. Response: ${JSON.stringify(data)}`);
         onGenerate(text);
