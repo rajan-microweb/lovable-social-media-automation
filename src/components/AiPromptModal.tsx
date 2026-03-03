@@ -268,9 +268,12 @@ export function AiPromptModal({
     (jobId: string): Promise<string> =>
       new Promise((resolve, reject) => {
         startTimeRef.current = Date.now();
+        // Clear any existing interval before starting
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = setInterval(async () => {
           if (Date.now() - startTimeRef.current >= IMAGE_MAX_POLL_DURATION_MS) {
-            cleanupPolling();
+            if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+            if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
             reject(new Error("Image generation timed out after 3 minutes"));
             return;
           }
@@ -281,28 +284,37 @@ export function AiPromptModal({
               body: JSON.stringify({ jobId, userId: context?.userId }),
             });
             if (!res.ok) return;
-            const data = await res.json();
-            const status = data.status || data.data?.status;
-            const imageUrl = data.imageUrl || data.data?.imageUrl || data.image_url || "";
+            const raw = await res.json();
+            // Handle both flat and nested response shapes from n8n
+            const payload = Array.isArray(raw) ? raw[0] : raw;
+            const status = payload?.status ?? payload?.data?.status ?? "";
+            const imageUrl = payload?.imageUrl ?? payload?.data?.imageUrl ?? payload?.image_url ?? payload?.url ?? "";
+            console.log("[pollImageStatus] status:", status, "imageUrl:", imageUrl);
             if (status === "completed" && imageUrl) {
-              cleanupPolling();
+              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
               resolve(imageUrl);
             } else if (status === "failed") {
-              cleanupPolling();
-              reject(new Error(data.error || data.data?.error || "Image generation failed"));
+              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
+              reject(new Error(payload?.error ?? payload?.data?.error ?? "Image generation failed"));
             }
-          } catch { /* keep polling */ }
+          } catch (e) { console.warn("[pollImageStatus] fetch error, will retry:", e); }
         }, IMAGE_POLL_INTERVAL_MS);
       }),
-    [cleanupPolling, context?.userId]
+    [context?.userId]
   );
 
   const pollVideoStatus = useCallback(
     (jobId: string): Promise<string> =>
       new Promise((resolve, reject) => {
+        startTimeRef.current = Date.now();
+        // Clear any existing interval before starting
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = setInterval(async () => {
           if (Date.now() - startTimeRef.current >= VIDEO_MAX_POLL_DURATION_MS) {
-            cleanupPolling();
+            if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+            if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
             reject(new Error("Video generation timed out after 5 minutes"));
             return;
           }
@@ -313,15 +325,25 @@ export function AiPromptModal({
               body: JSON.stringify({ jobId, userId: context?.userId }),
             });
             if (!res.ok) return;
-            const data = await res.json();
-            const status = data.status || data.data?.status;
-            const videoUrl = data.videoUrl || data.data?.videoUrl || data.url || "";
-            if (status === "completed" && videoUrl) { cleanupPolling(); resolve(videoUrl); }
-            else if (status === "failed") { cleanupPolling(); reject(new Error(data.error || "Video generation failed")); }
-          } catch { /* keep polling */ }
+            const raw = await res.json();
+            // Handle both flat and nested response shapes from n8n
+            const payload = Array.isArray(raw) ? raw[0] : raw;
+            const status = payload?.status ?? payload?.data?.status ?? "";
+            const videoUrl = payload?.videoUrl ?? payload?.data?.videoUrl ?? payload?.video_url ?? payload?.url ?? "";
+            console.log("[pollVideoStatus] status:", status, "videoUrl:", videoUrl);
+            if (status === "completed" && videoUrl) {
+              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
+              resolve(videoUrl);
+            } else if (status === "failed") {
+              if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+              if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
+              reject(new Error(payload?.error ?? "Video generation failed"));
+            }
+          } catch (e) { console.warn("[pollVideoStatus] fetch error, will retry:", e); }
         }, VIDEO_POLL_INTERVAL_MS);
       }),
-    [cleanupPolling, context?.userId]
+    [context?.userId]
   );
 
   // ── Upload helper ────────────────────────────────────────────────────────
@@ -505,10 +527,9 @@ export function AiPromptModal({
       toast.error(msg);
       setLoading(false);
       setUploadProgress("");
-      cleanupPolling();
-    } finally {
-      // Only cleanup polling here (not loading — that's handled above for image/video)
-      cleanupPolling();
+      // Only stop intervals on error — not here for async image/video (they self-cleanup)
+      if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+      if (elapsedIntervalRef.current) { clearInterval(elapsedIntervalRef.current); elapsedIntervalRef.current = null; }
     }
   };
 
