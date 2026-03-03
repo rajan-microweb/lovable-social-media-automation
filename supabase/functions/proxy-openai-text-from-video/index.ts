@@ -9,9 +9,9 @@ import {
 } from "../_shared/encryption.ts";
 
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  "gpt-4.1":     { input: 2.00, output: 8.00 },
-  "gpt-4o":      { input: 2.50, output: 10.00 },
-  "gpt-4o-mini": { input: 0.15, output: 0.60 },
+  "gpt-4.1": { input: 2.0, output: 8.0 },
+  "gpt-4o": { input: 2.5, output: 10.0 },
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
 };
 
 function calcCost(model: string, promptTokens: number, completionTokens: number): number {
@@ -37,9 +37,7 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createSupabaseClient();
-    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
-      supabase, user_id, "openai"
-    );
+    const { credentials, error: credError } = await getDecryptedPlatformCredentials(supabase, user_id, "openai");
 
     if (credError || !credentials) {
       return jsonResponse(errorResponse(credError || "OpenAI integration not found"), 404);
@@ -50,15 +48,17 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse("No OpenAI API key found in credentials"), 404);
     }
 
-    const userPrompt = prompt || "Analyze this video and generate engaging social media content. Include a caption, description, hooks, and relevant hashtags.";
+    const userPrompt =
+      prompt ||
+      "Analyze this video and generate engaging social media content. Include a caption, description, hooks, and relevant hashtags.";
 
-    const MODEL = "gpt-4o";
+    const MODEL = "gpt-4.1";
     console.log("[proxy-openai-text-from-video] Calling OpenAI Chat Completions API with video URL...");
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openaiKey}`,
+        Authorization: `Bearer ${openaiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -92,16 +92,18 @@ Deno.serve(async (req) => {
     const usedModel = data.model ?? MODEL;
     const promptTokens = data.usage?.prompt_tokens ?? data.usage?.input_tokens ?? 0;
     const completionTokens = data.usage?.completion_tokens ?? data.usage?.output_tokens ?? 0;
-    const totalTokens = data.usage?.total_tokens ?? (promptTokens + completionTokens);
+    const totalTokens = data.usage?.total_tokens ?? promptTokens + completionTokens;
     const costUsd = calcCost(usedModel, promptTokens, completionTokens);
 
     console.log("[proxy-openai-text-from-video] Success");
-    return jsonResponse(successResponse({
-      text,
-      model: usedModel,
-      tokens_used: { prompt: promptTokens, completion: completionTokens, total: totalTokens },
-      cost_usd: Math.round(costUsd * 1_000_000) / 1_000_000,
-    }));
+    return jsonResponse(
+      successResponse({
+        text,
+        model: usedModel,
+        tokens_used: { prompt: promptTokens, completion: completionTokens, total: totalTokens },
+        cost_usd: Math.round(costUsd * 1_000_000) / 1_000_000,
+      }),
+    );
   } catch (error) {
     console.error("[proxy-openai-text-from-video] Error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
