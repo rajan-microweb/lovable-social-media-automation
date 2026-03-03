@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
 
     const userPrompt = prompt || "Analyze this video and generate engaging social media content. Include a caption, description, hooks, and relevant hashtags.";
 
-    const MODEL = "gpt-4.1";
+    const MODEL = "gpt-4o-mini";
     console.log("[proxy-openai-text-from-video] Calling OpenAI Responses API with video...");
 
     const response = await fetch("https://api.openai.com/v1/responses", {
