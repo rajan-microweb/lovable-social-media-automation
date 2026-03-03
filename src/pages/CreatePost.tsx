@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles, X, Plus, Loader2, Facebook, Instagram, Linkedin, Youtube, Twitter } from "lucide-react";
+import { Sparkles, X, Plus, Loader2, Facebook, Instagram, Linkedin, Youtube, Twitter, Wand2, Type } from "lucide-react";
 import { convertFileToJpeg, isJpegFile, convertToJpeg, convertUrlToJpegFile } from "@/lib/imageUtils";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
@@ -110,6 +110,9 @@ export default function CreatePost() {
   const [carouselFiles, setCarouselFiles] = useState<File[]>([]);
   const [carouselGenerating, setCarouselGenerating] = useState(false);
   const [carouselAiPrompt, setCarouselAiPrompt] = useState("");
+  const [carouselAiMode, setCarouselAiMode] = useState<"prompt" | "fromText">("prompt");
+  // Selected carousel image index for "Text from Image" in AI modal
+  const [selectedCarouselImageIndex, setSelectedCarouselImageIndex] = useState<number | null>(null);
 
   // Available platforms based on post type
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
@@ -237,16 +240,23 @@ export default function CreatePost() {
   };
 
   // Resolve existing media/text for AI modal context (always bucket URLs)
-  const getAiContext = () => ({
-    userId: user?.id,
-    platforms,
-    typeOfPost,
-    title: postTitle,
-    description: postDescription,
-    existingImageUrl: imageUrl,
-    existingVideoUrl: videoUrl,
-    existingTextContent: textContent,
-  });
+  const getAiContext = () => {
+    // For carousel, use the selected carousel image URL for "Text from Image"
+    let contextImageUrl = imageUrl;
+    if (typeOfPost === "carousel" && selectedCarouselImageIndex !== null) {
+      contextImageUrl = carouselImages[selectedCarouselImageIndex] ?? imageUrl;
+    }
+    return {
+      userId: user?.id,
+      platforms,
+      typeOfPost,
+      title: postTitle,
+      description: postDescription,
+      existingImageUrl: contextImageUrl,
+      existingVideoUrl: videoUrl,
+      existingTextContent: textContent,
+    };
+  };
 
   const handleAiGenerate = async (content: string) => {
     if (aiModalTarget === "textContent") {
@@ -501,8 +511,13 @@ export default function CreatePost() {
       return;
     }
 
-    if (!carouselAiPrompt.trim()) {
+    if (carouselAiMode === "prompt" && !carouselAiPrompt.trim()) {
       toast.error("Please enter a prompt for AI image generation");
+      return;
+    }
+
+    if (carouselAiMode === "fromText" && !textContent.trim()) {
+      toast.error("Please enter text content first before using Image from Text");
       return;
     }
 
@@ -515,17 +530,30 @@ export default function CreatePost() {
 
     try {
       // Step 1: Call n8n webhook to generate the image
+      const payload = carouselAiMode === "fromText"
+        ? {
+            generationType: "imageFromText",
+            text: textContent,
+            userId: user?.id,
+            platforms: platforms,
+            typeOfPost: "carousel",
+            title: postTitle,
+            description: postDescription,
+          }
+        : {
+            generationType: "image",
+            imagePrompt: carouselAiPrompt,
+            userId: user?.id,
+            platforms: platforms,
+            typeOfPost: "carousel",
+            title: postTitle,
+            description: postDescription,
+          };
+
       const genResponse = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imagePrompt: carouselAiPrompt,
-          userId: user?.id,
-          platforms: platforms,
-          typeOfPost: "carousel",
-          title: postTitle,
-          description: postDescription,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!genResponse.ok) {
@@ -753,6 +781,38 @@ export default function CreatePost() {
                           <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
                         </Button>
                       </div>
+                      {/* Carousel image selector for "Text from Image" */}
+                      {typeOfPost === "carousel" && carouselImages.length > 0 && (
+                        <div className="mb-3 space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            Select a carousel image to use with <span className="font-medium">Text from Image</span> AI generation:
+                          </p>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCarouselImageIndex(null)}
+                              className={`rounded-lg border-2 p-0.5 transition-all ${selectedCarouselImageIndex === null ? "border-primary" : "border-transparent hover:border-muted-foreground/40"}`}
+                            >
+                              <div className="h-14 w-14 rounded-md bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                                None
+                              </div>
+                            </button>
+                            {carouselImages.map((url, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setSelectedCarouselImageIndex(idx)}
+                                className={`rounded-lg border-2 p-0.5 transition-all ${selectedCarouselImageIndex === idx ? "border-primary" : "border-transparent hover:border-muted-foreground/40"}`}
+                              >
+                                <img src={url} alt={`Slide ${idx + 1}`} className="h-14 w-14 object-cover rounded-md" />
+                              </button>
+                            ))}
+                          </div>
+                          {selectedCarouselImageIndex !== null && (
+                            <p className="text-xs text-primary">Slide {selectedCarouselImageIndex + 1} selected — click AI Generate to use it</p>
+                          )}
+                        </div>
+                      )}
                       <Textarea
                         value={textContent}
                         onChange={(e) => setTextContent(e.target.value)}
@@ -776,32 +836,91 @@ export default function CreatePost() {
                       </Label>
 
                       {/* AI Generate section */}
-                      <div className="border rounded-lg p-3 space-y-2">
+                      <div className="border rounded-lg p-3 space-y-3">
                         <div className="flex items-center gap-1 text-sm font-medium">
                           <Sparkles className="h-4 w-4" /> AI Generate Images
                         </div>
+
+                        {/* Mode selector */}
                         <div className="flex gap-2">
-                          <Input
-                            type="text"
-                            placeholder="Describe the image you want to generate..."
-                            value={carouselAiPrompt}
-                            onChange={(e) => setCarouselAiPrompt(e.target.value)}
-                            disabled={carouselGenerating}
-                          />
-                          <Button
+                          <button
                             type="button"
-                            onClick={generateCarouselAiImage}
-                            disabled={carouselGenerating || !carouselAiPrompt.trim()}
-                            size="sm"
+                            onClick={() => setCarouselAiMode("prompt")}
+                            className={`flex-1 flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-all ${carouselAiMode === "prompt" ? "border-primary bg-primary/5" : "border-muted hover:border-primary/50"}`}
                           >
-                            {carouselGenerating ? (
-                              <Loader2 className="animate-spin mr-1 h-4 w-4" />
-                            ) : (
-                              <Plus className="mr-1 h-4 w-4" />
-                            )}
-                            Generate
-                          </Button>
+                            <div className="flex items-center gap-2">
+                              <Wand2 className="h-4 w-4 text-primary" />
+                              <span className="text-sm font-medium">Generate Image</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Create from a prompt</p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCarouselAiMode("fromText")}
+                            className={`flex-1 flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-all ${carouselAiMode === "fromText" ? "border-primary bg-primary/5" : "border-muted hover:border-primary/50"}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Type className="h-4 w-4 text-primary" />
+                              <span className="text-sm font-medium">Image from Text</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Turn post text into a visual</p>
+                          </button>
                         </div>
+
+                        {/* Mode: Generate Image */}
+                        {carouselAiMode === "prompt" && (
+                          <div className="flex gap-2">
+                            <Input
+                              type="text"
+                              placeholder="Describe the image you want to generate..."
+                              value={carouselAiPrompt}
+                              onChange={(e) => setCarouselAiPrompt(e.target.value)}
+                              disabled={carouselGenerating}
+                            />
+                            <Button
+                              type="button"
+                              onClick={generateCarouselAiImage}
+                              disabled={carouselGenerating || !carouselAiPrompt.trim()}
+                              size="sm"
+                            >
+                              {carouselGenerating ? (
+                                <Loader2 className="animate-spin mr-1 h-4 w-4" />
+                              ) : (
+                                <Plus className="mr-1 h-4 w-4" />
+                              )}
+                              Generate
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Mode: Image from Text */}
+                        {carouselAiMode === "fromText" && (
+                          <div className="space-y-2">
+                            {textContent.trim() ? (
+                              <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground line-clamp-2">
+                                <span className="font-medium text-primary">Using text: </span>{textContent}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-destructive">Please enter text content first before using this option.</p>
+                            )}
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                onClick={generateCarouselAiImage}
+                                disabled={carouselGenerating || !textContent.trim()}
+                                size="sm"
+                              >
+                                {carouselGenerating ? (
+                                  <Loader2 className="animate-spin mr-1 h-4 w-4" />
+                                ) : (
+                                  <Plus className="mr-1 h-4 w-4" />
+                                )}
+                                Generate
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
                         <p className="text-xs text-muted-foreground">
                           Generate images one by one. Each generation adds one image to the carousel.
                         </p>
