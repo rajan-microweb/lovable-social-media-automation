@@ -93,29 +93,32 @@ Deno.serve(async (req) => {
 
     // If a specific platform is requested, use the shared helper for proper decryption
     if (platform_name) {
-      const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
-        supabase,
-        user_id,
-        platform_name
-      );
+      // Always fetch the full record first so we have metadata even if decryption fails
+      const { data: fullRecord } = await supabase
+        .from('platform_integrations')
+        .select('*')
+        .eq('user_id', user_id)
+        .eq('platform_name', platform_name)
+        .eq('status', 'active')
+        .maybeSingle();
 
-      if (credError || !credentials || !integration) {
+      if (!fullRecord) {
         return new Response(
           JSON.stringify({ data: null }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Fetch the full record to include all fields
-      const { data: fullRecord } = await supabase
-        .from('platform_integrations')
-        .select('*')
-        .eq('id', integration.id)
-        .single();
+      const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
+        supabase,
+        user_id,
+        platform_name
+      );
 
-      const result = fullRecord
-        ? { ...fullRecord, credentials, credentials_encrypted: false }
-        : { credentials, metadata: integration.metadata };
+      // Return the record with whatever credentials we have (empty object if decryption failed)
+      // This ensures metadata is always returned to n8n even when old-format credentials can't be decrypted
+      const decryptedCredentials = (!credError && credentials) ? credentials : {};
+      const result = { ...fullRecord, credentials: decryptedCredentials, credentials_encrypted: false };
 
       return new Response(
         JSON.stringify({ data: result }),
