@@ -119,6 +119,7 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -138,6 +139,27 @@ serve(async (req) => {
     }
 
     const { user_id, platform_name, credentials, status } = validationResult.data;
+
+    // If authenticated via Bearer JWT, verify the token and enforce user_id match
+    if (!hasValidApiKey && hasBearer) {
+      const token = authHeader!.replace('Bearer ', '');
+      const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+      const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+      if (authError || !user) {
+        console.error('Bearer auth verification failed:', authError?.message);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (user.id !== user_id) {
+        console.error('Bearer user mismatch:', { token_user: user.id, body_user: user_id });
+        return new Response(
+          JSON.stringify({ error: 'Forbidden' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     console.log('Storing platform integration:', { 
       platform_name, 
