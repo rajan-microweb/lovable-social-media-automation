@@ -37,8 +37,8 @@ const PLATFORM_MAP: Record<string, string[]> = {
   pdf: ["LinkedIn"],
 };
 
-// Post metadata can include structured values (e.g. selected publish targets)
-const metadataSchema = z.record(z.string(), z.any()).optional();
+// Replace the old metadataItemSchema with this:
+const metadataSchema = z.record(z.string(), z.string()).optional();
 
 const postSchema = z.object({
   type_of_post: z.string().min(1, "Type of post is required"),
@@ -369,7 +369,7 @@ export default function CreatePost() {
       }
 
       // Build metadata object with platform+post-type specific fields
-      const metadataObject: Record<string, any> = {};
+      const metadataObject: Record<string, string> = {};
 
       // Article URL stored in metadata
       if (typeOfPost === "article" && platforms.includes("linkedin")) {
@@ -382,19 +382,6 @@ export default function CreatePost() {
       if ((typeOfPost === "video" || typeOfPost === "shorts") && platforms.includes("youtube")) {
         if (youtubeTitle) metadataObject["title"] = youtubeTitle;
         if (youtubeDescription) metadataObject["description"] = youtubeDescription;
-      }
-
-      // Selected publish targets (Publer-style)
-      if (selectedAccountIds.length > 0) {
-        const targets = platformAccounts
-          .filter((a) => selectedAccountIds.includes(a.id))
-          .map((a) => ({
-            platform: a.platform,
-            target_id: a.id,
-            target_type: a.type,
-            name: a.name,
-          }));
-        metadataObject["targets"] = targets;
       }
 
       // Build tags array for platform-specific hashtags only

@@ -184,7 +184,7 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
           }
 
           // --- TWITTER ---
-          if (platformName === "twitter" || platformName === "x") {
+          if (platformName === "twitter") {
             const meta = metadata as unknown as TwitterMetadata;
             if (meta.user) {
               allAccounts.push({
@@ -192,7 +192,7 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
                 name: meta.user.name || `@${meta.user.username}`,
                 avatar: meta.user.profile_image_url || null,
                 type: 'personal',
-                platform: platformName === "x" ? "x" : "twitter"
+                platform: 'twitter'
               });
             }
           }

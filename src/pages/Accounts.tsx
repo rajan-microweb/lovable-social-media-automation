@@ -29,7 +29,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
-import { useLocation } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -96,7 +95,6 @@ const formatApiCost = (cost: string) => {
 
 export default function Accounts() {
   const { user } = useAuth();
-  const location = useLocation();
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshingPlatform, setRefreshingPlatform] = useState<string | null>(null);
@@ -157,21 +155,16 @@ export default function Accounts() {
       icon: Instagram,
       color: "text-[#E4405F]",
     },
-    threads: {
-      name: "Threads",
-      icon: TrendingUp,
-      color: "text-foreground",
-    },
-    x: {
-      name: "X",
-      icon: Twitter,
-      color: "text-foreground",
-    },
-    youtube: {
-      name: "YouTube",
-      icon: Youtube,
-      color: "text-[#FF0000]",
-    },
+    // twitter: {
+    //   name: "Twitter",
+    //   icon: Twitter,
+    //   color: "text-[#1DA1F2]",
+    // },
+    // youtube: {
+    //   name: "YouTube",
+    //   icon: Youtube,
+    //   color: "text-[#FF0000]",
+    // },
     openai: {
       name: "OpenAI",
       icon: Brain,
@@ -488,89 +481,15 @@ export default function Accounts() {
     };
   }, []);
 
-  const handleConnect = async (platform: string) => {
+  const handleConnect = (platform: string) => {
     if (!user?.id) {
       toast.error("Please log in to connect your account");
       return;
     }
 
-    const platformKey =
-      Object.keys(platformConfigs).find(
-        (key) => platformConfigs[key].name.toLowerCase() === platform.toLowerCase(),
-      ) || platform.toLowerCase();
-
-    const config = platformConfigs[platformKey];
-    if (config?.isApiKey) {
-      setPlatformDialog({ open: true, platform });
-      return;
-    }
-
-    // OAuth connect flow (Publer-style)
-    const redirect_to = `${window.location.origin}/accounts`;
-    const functionName =
-      platformKey === "facebook" || platformKey === "instagram" || platformKey === "threads"
-        ? "oauth-meta-start"
-        : platformKey === "linkedin"
-          ? "oauth-linkedin-start"
-          : platformKey === "youtube"
-            ? "oauth-youtube-start"
-            : platformKey === "x"
-              ? "oauth-x-start"
-              : null;
-
-    if (!functionName) {
-      toast.error(`OAuth is not configured for ${platform}`);
-      return;
-    }
-
-    const { data, error } = await supabase.functions.invoke(functionName, {
-      body: { redirect_to },
-    });
-    if (error) {
-      console.error("OAuth start error:", error);
-      toast.error("Failed to start OAuth");
-      return;
-    }
-    const oauthUrl = (data as any)?.url as string | undefined;
-    if (!oauthUrl) {
-      toast.error("OAuth start did not return a URL");
-      return;
-    }
-
-    window.location.href = oauthUrl;
+    // Open the platform dialog for all platforms including OpenAI
+    setPlatformDialog({ open: true, platform });
   };
-
-  // After OAuth callback redirect, sync assets for the platform
-  useEffect(() => {
-    if (!user?.id) return;
-    const params = new URLSearchParams(location.search);
-    const connected = params.get("connected");
-    const success = params.get("success");
-    if (!connected || success !== "1") return;
-
-    const sync = async () => {
-      try {
-        if (connected === "meta") {
-          await supabase.functions.invoke("sync-meta-assets", { body: {} });
-        } else if (connected === "linkedin") {
-          await supabase.functions.invoke("sync-linkedin-assets", { body: {} });
-        } else if (connected === "youtube") {
-          await supabase.functions.invoke("sync-youtube-assets", { body: {} });
-        } else if (connected === "x") {
-          await supabase.functions.invoke("sync-x-assets", { body: {} });
-        }
-        toast.success("Account connected!");
-      } catch (e) {
-        console.error("Asset sync failed:", e);
-        toast.error("Connected, but failed to sync accounts");
-      } finally {
-        await fetchConnectedAccounts();
-      }
-    };
-
-    sync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.search, user?.id]);
 
   // Handle submit from PlatformConnectDialog
   const handlePlatformDialogSubmit = async (fields: Record<string, string>) => {
@@ -693,6 +612,38 @@ export default function Accounts() {
 
       const integrationData = storeResult.data;
       toast.success("Credentials stored successfully!");
+
+      // Step 2: Only after successful storage, notify n8n webhook
+      // SECURITY: Only send user_id, integration_id, and platform_name - NO credentials
+      const isTokenExchanged =
+        (platformKey === "facebook" || platformKey === "instagram") &&
+        fields.accessToken &&
+        fields.appId &&
+        fields.appSecret;
+
+      try {
+        const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            platform_name: platformKey,
+            user_id: user.id,
+            integration_id: integrationData?.id,
+            token_exchanged: isTokenExchanged, // Indicates long-lived token was obtained
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Webhook error:", errorText);
+          // Don't show error since credentials are already stored
+        }
+      } catch (webhookError) {
+        console.error("Webhook call failed:", webhookError);
+        // Don't show error since credentials are already stored
+      }
     } catch (error) {
       console.error("Error storing credentials:", error);
       toast.error(`Failed to store credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -716,23 +667,23 @@ export default function Accounts() {
 
     setRefreshingPlatform(platformKey);
     try {
-      if (platformKey === "facebook" || platformKey === "instagram" || platformKey === "threads") {
-        const res = await supabase.functions.invoke("sync-meta-assets", { body: {} });
-        if (res.error) throw res.error;
-      } else if (platformKey === "linkedin") {
-        const res = await supabase.functions.invoke("sync-linkedin-assets", { body: {} });
-        if (res.error) throw res.error;
-      } else if (platformKey === "youtube") {
-        const res = await supabase.functions.invoke("sync-youtube-assets", { body: {} });
-        if (res.error) throw res.error;
-      } else if (platformKey === "x") {
-        const res = await supabase.functions.invoke("sync-x-assets", { body: {} });
-        if (res.error) throw res.error;
-      } else {
-        toast.info("Nothing to refresh for this integration");
+      const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials?action=refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          platform_name: platformKey,
+          user_id: user.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
       }
 
-      toast.success(`${platformName} synced successfully!`);
+      toast.success(`${platformName} credentials refreshed successfully!`);
       // Refetch accounts to show updated data
       await fetchConnectedAccounts();
     } catch (error) {

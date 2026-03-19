@@ -6,7 +6,6 @@ import {
   validateApiKey,
   createSupabaseClient,
   safeDecryptCredentials,
-  updatePlatformCredentials,
 } from "../_shared/encryption.ts";
 
 // Configuration: Days before expiration to trigger actions
@@ -50,10 +49,11 @@ Deno.serve(async (req) => {
     const supabase = createSupabaseClient();
     const now = new Date();
 
-    // Fetch all active integrations we can manage
+    // Fetch all active LinkedIn integrations
     const { data: integrations, error: fetchError } = await supabase
       .from("platform_integrations")
       .select("id, user_id, credentials, credentials_encrypted, metadata, platform_name")
+      .eq("platform_name", "linkedin")
       .eq("status", "active");
 
     if (fetchError) {
@@ -64,123 +64,36 @@ Deno.serve(async (req) => {
     const needsAccessRefresh: ExpiringToken[] = [];
     const needsDisconnectWarning: DisconnectWarning[] = [];
     const shouldAutoDisconnect: AutoDisconnect[] = [];
-    const refreshed: Array<{ integration_id: string; platform: string }> = [];
-    const markedExpired: Array<{ integration_id: string; platform: string }> = [];
-
-    async function markIntegrationExpired(integrationId: string) {
-      const { error } = await supabase
-        .from("platform_integrations")
-        .update({ status: "expired", updated_at: new Date().toISOString() })
-        .eq("id", integrationId);
-      if (error) {
-        console.error("[check-expiring-tokens] Failed to mark expired:", error.message);
-      }
-    }
-
-    async function refreshOauthToken(args: {
-      platform: string;
-      refresh_token: string;
-    }): Promise<{ access_token: string; refresh_token?: string; expires_in?: number; scope?: string; token_type?: string }> {
-      const platform = args.platform.toLowerCase();
-      if (platform === "youtube") {
-        const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-        const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-        if (!clientId || !clientSecret) throw new Error("Missing Google OAuth env");
-        const res = await fetch("https://oauth2.googleapis.com/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "refresh_token",
-            refresh_token: args.refresh_token,
-            client_id: clientId,
-            client_secret: clientSecret,
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error_description || json?.error || "Google refresh failed");
-        return json;
-      }
-
-      if (platform === "linkedin") {
-        const clientId = Deno.env.get("LINKEDIN_CLIENT_ID");
-        const clientSecret = Deno.env.get("LINKEDIN_CLIENT_SECRET");
-        if (!clientId || !clientSecret) throw new Error("Missing LinkedIn OAuth env");
-        const res = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "refresh_token",
-            refresh_token: args.refresh_token,
-            client_id: clientId,
-            client_secret: clientSecret,
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error_description || json?.error || "LinkedIn refresh failed");
-        return json;
-      }
-
-      if (platform === "x") {
-        const clientId = Deno.env.get("X_CLIENT_ID");
-        const clientSecret = Deno.env.get("X_CLIENT_SECRET");
-        if (!clientId || !clientSecret) throw new Error("Missing X OAuth env");
-        const res = await fetch("https://api.twitter.com/2/oauth2/token", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-          },
-          body: new URLSearchParams({
-            grant_type: "refresh_token",
-            refresh_token: args.refresh_token,
-            client_id: clientId,
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error_description || json?.error || "X refresh failed");
-        return json;
-      }
-
-      throw new Error(`Refresh not supported for platform: ${platform}`);
-    }
 
     for (const integration of integrations || []) {
       try {
-        const platform = (integration.platform_name || "").toLowerCase();
-        const credentials = await safeDecryptCredentials(integration.credentials);
-        if (!credentials || Object.keys(credentials).length === 0) continue;
+        // Decrypt credentials
+        let credentials: Record<string, unknown>;
+        
+        if (integration.credentials_encrypted === true) {
+          // For legacy pgcrypto format
+          const encryptedValue = typeof integration.credentials === 'string' 
+            ? integration.credentials 
+            : JSON.stringify(integration.credentials).replace(/^"|"$/g, '');
+          
+          const { data: decryptedData, error: decryptError } = await supabase.rpc(
+            'decrypt_credentials',
+            { encrypted_creds: encryptedValue }
+          );
+          
+          if (decryptError || !decryptedData) {
+            console.error(`[check-expiring-tokens] Decryption failed for ${integration.id}`);
+            continue;
+          }
+          
+          credentials = typeof decryptedData === 'string' ? JSON.parse(decryptedData) : decryptedData;
+        } else {
+          credentials = await safeDecryptCredentials(integration.credentials);
+        }
 
         // Get expiration timestamps
-        const expiresAt = (credentials.expires_at as string) || (credentials.expiresAt as string);
-        const refreshTokenExpiresAt = (credentials.refresh_token_expires_at as string) || (credentials.refreshTokenExpiresAt as string);
-        const refreshToken = (credentials.refresh_token as string) || (credentials.refreshToken as string);
-
-        // If access token already expired, attempt refresh if possible; otherwise mark expired
-        if (expiresAt && new Date(expiresAt).getTime() <= now.getTime()) {
-          if (refreshToken && (platform === "linkedin" || platform === "youtube" || platform === "x")) {
-            try {
-              const refreshedToken = await refreshOauthToken({ platform, refresh_token: refreshToken });
-              const newExpiresAt = refreshedToken.expires_in
-                ? new Date(Date.now() + refreshedToken.expires_in * 1000).toISOString()
-                : null;
-              const merged = {
-                ...credentials,
-                access_token: refreshedToken.access_token,
-                expires_at: newExpiresAt,
-              } as Record<string, unknown>;
-              if (refreshedToken.refresh_token) merged.refresh_token = refreshedToken.refresh_token;
-              await updatePlatformCredentials(supabase, integration.id, merged);
-              refreshed.push({ integration_id: integration.id, platform });
-            } catch (e) {
-              await markIntegrationExpired(integration.id);
-              markedExpired.push({ integration_id: integration.id, platform });
-            }
-          } else {
-            await markIntegrationExpired(integration.id);
-            markedExpired.push({ integration_id: integration.id, platform });
-          }
-          continue;
-        }
+        const expiresAt = credentials.expires_at as string;
+        const refreshTokenExpiresAt = credentials.refresh_token_expires_at as string;
 
         // Check access token expiration
         if (expiresAt) {
@@ -194,26 +107,6 @@ Deno.serve(async (req) => {
               platform: integration.platform_name,
               expires_in_days: daysUntilExpiry,
             });
-
-            // Best-effort auto refresh for supported platforms
-            if (refreshToken && (platform === "linkedin" || platform === "youtube" || platform === "x")) {
-              try {
-                const refreshedToken = await refreshOauthToken({ platform, refresh_token: refreshToken });
-                const newExpiresAt = refreshedToken.expires_in
-                  ? new Date(Date.now() + refreshedToken.expires_in * 1000).toISOString()
-                  : null;
-                const merged = {
-                  ...credentials,
-                  access_token: refreshedToken.access_token,
-                  expires_at: newExpiresAt,
-                } as Record<string, unknown>;
-                if (refreshedToken.refresh_token) merged.refresh_token = refreshedToken.refresh_token;
-                await updatePlatformCredentials(supabase, integration.id, merged);
-                refreshed.push({ integration_id: integration.id, platform });
-              } catch (e) {
-                console.error("[check-expiring-tokens] Refresh failed:", e);
-              }
-            }
           }
         }
 
@@ -264,8 +157,6 @@ Deno.serve(async (req) => {
       needs_access_refresh: needsAccessRefresh,
       needs_disconnect_warning: needsDisconnectWarning,
       should_auto_disconnect: shouldAutoDisconnect,
-      refreshed,
-      marked_expired: markedExpired,
       checked_at: now.toISOString(),
     }));
   } catch (error) {
