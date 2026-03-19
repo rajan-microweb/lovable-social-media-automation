@@ -17,3 +17,45 @@ verify_jwt = false
 
 [functions.proxy-openai-text-from-video]
 verify_jwt = false
+
+# OAuth connect flow (browser preflight must succeed; functions enforce auth internally)
+[functions.oauth-meta-start]
+verify_jwt = false
+[functions.oauth-meta-callback]
+verify_jwt = false
+[functions.oauth-linkedin-start]
+verify_jwt = false
+[functions.oauth-linkedin-callback]
+verify_jwt = false
+[functions.oauth-youtube-start]
+verify_jwt = false
+[functions.oauth-youtube-callback]
+verify_jwt = false
+[functions.oauth-x-start]
+verify_jwt = false
+[functions.oauth-x-callback]
+verify_jwt = false
+
+# Asset sync (called from SPA)
+[functions.sync-meta-assets]
+verify_jwt = false
+[functions.sync-linkedin-assets]
+verify_jwt = false
+[functions.sync-youtube-assets]
+verify_jwt = false
+[functions.sync-x-assets]
+verify_jwt = false
+
+# Publishing (called from SPA)
+[functions.publish-facebook-post]
+verify_jwt = false
+[functions.publish-instagram-media]
+verify_jwt = false
+[functions.publish-linkedin-ugc]
+verify_jwt = false
+[functions.publish-x-post]
+verify_jwt = false
+[functions.publish-threads-post]
+verify_jwt = false
+[functions.publish-youtube-upload]
+verify_jwt = false
