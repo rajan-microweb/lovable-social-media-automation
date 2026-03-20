@@ -63,7 +63,10 @@ export type Database = {
           metadata: Json | null
           pdf: string | null
           platforms: string[] | null
+          workspace_id: string
           scheduled_at: string | null
+          recurrence_frequency: string
+          recurrence_until: string | null
           status: string
           tags: string[] | null
           text: string | null
@@ -83,7 +86,10 @@ export type Database = {
           metadata?: Json | null
           pdf?: string | null
           platforms?: string[] | null
+          workspace_id: string
           scheduled_at?: string | null
+          recurrence_frequency?: string
+          recurrence_until?: string | null
           status?: string
           tags?: string[] | null
           text?: string | null
@@ -103,7 +109,10 @@ export type Database = {
           metadata?: Json | null
           pdf?: string | null
           platforms?: string[] | null
+          workspace_id?: string
           scheduled_at?: string | null
+          recurrence_frequency?: string
+          recurrence_until?: string | null
           status?: string
           tags?: string[] | null
           text?: string | null
@@ -156,7 +165,10 @@ export type Database = {
           id: string
           image: string | null
           platforms: string[] | null
+          workspace_id: string
           scheduled_at: string | null
+          recurrence_frequency: string
+          recurrence_until: string | null
           status: string
           text: string | null
           title: string
@@ -172,7 +184,10 @@ export type Database = {
           id?: string
           image?: string | null
           platforms?: string[] | null
+          workspace_id: string
           scheduled_at?: string | null
+          recurrence_frequency?: string
+          recurrence_until?: string | null
           status?: string
           text?: string | null
           title: string
@@ -188,7 +203,10 @@ export type Database = {
           id?: string
           image?: string | null
           platforms?: string[] | null
+          workspace_id?: string
           scheduled_at?: string | null
+          recurrence_frequency?: string
+          recurrence_until?: string | null
           status?: string
           text?: string | null
           title?: string
@@ -196,6 +214,174 @@ export type Database = {
           updated_at?: string
           user_id?: string
           video?: string | null
+        }
+        Relationships: []
+      }
+      workspaces: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      workspace_members: {
+        Row: {
+          created_at: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      content_approvals: {
+        Row: {
+          approval_status: string
+          content_id: string
+          content_type: string
+          created_at: string
+          id: string
+          note: string | null
+          requested_at: string
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          approval_status?: string
+          content_id: string
+          content_type: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          requested_at?: string
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          approval_status?: string
+          content_id?: string
+          content_type?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          requested_at?: string
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      content_change_requests: {
+        Row: {
+          created_at: string
+          content_id: string
+          content_type: string
+          details: Json | null
+          id: string
+          requested_at: string
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          request_status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          content_id: string
+          content_type: string
+          details?: Json | null
+          id?: string
+          requested_at?: string
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          request_status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          content_id?: string
+          content_type?: string
+          details?: Json | null
+          id?: string
+          requested_at?: string
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          request_status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      publish_jobs: {
+        Row: {
+          content_id: string
+          content_type: string
+          created_at: string
+          id: string
+          last_error: string | null
+          retry_count: number
+          run_at: string
+          state: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          content_id: string
+          content_type: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          retry_count?: number
+          run_at: string
+          state?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          content_id?: string
+          content_type?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          retry_count?: number
+          run_at?: string
+          state?: string
+          updated_at?: string
+          workspace_id?: string
         }
         Relationships: []
       }

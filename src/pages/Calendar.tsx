@@ -43,26 +43,31 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { detectUserCountry, getCountryName, type CountryCode } from "@/lib/holidays";
 import { EventDetailModal } from "@/components/calendar/EventDetailModal";
-import type { CalendarEventDetail } from "@/types/calendar";
-import { deleteCalendarEventForUser, fetchScheduledCalendarEventsForUserInRange } from "@/lib/api/calendar";
+import { deleteCalendarEventForUser, fetchScheduledCalendarEventsForUserInRange, rescheduleCalendarEventForUser } from "@/lib/api/calendar";
 import { cn } from "@/lib/utils";
 import {
   normalizeSocialPlatform,
-  SOCIAL_STATUS_DRAFT,
-  SOCIAL_STATUS_FAILED,
-  SOCIAL_STATUS_PUBLISHED,
-  SOCIAL_STATUS_SCHEDULED,
   type SocialPlatform,
-  type SocialStatus,
 } from "@/types/social";
+import {
+  getContentPipelineState,
+  getContentPipelineStateBadgeClassName,
+  getContentPipelineStateDotClassName,
+  getContentPipelineStateLabel,
+} from "@/lib/publishing/statusPipeline";
+import type { ContentItem, ContentKind } from "@/types/calendar";
 
 type ViewType = "month" | "week" | "day";
 type WeekStartsOn = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-type CalendarEventComputed = CalendarEventDetail & {
+type CalendarEventComputed = ContentItem & {
   scheduledDate: Date;
   dateKey: string;
   hour: number;
+  occurrenceId: string;
+  // Original "next" scheduled_at value from the stored content row.
+  baseScheduledAt: string;
+  isAnchorOccurrence: boolean;
 };
 
 // Platform icon map
@@ -80,13 +85,6 @@ const platformColorMap: Record<SocialPlatform, string> = {
   instagram: "text-[hsl(340,82%,52%)]",
   youtube: "text-destructive",
   twitter: "text-[hsl(203,89%,53%)]",
-};
-
-const statusDotColors: Record<SocialStatus, string> = {
-  [SOCIAL_STATUS_PUBLISHED]: "bg-chart-3",
-  [SOCIAL_STATUS_SCHEDULED]: "bg-primary",
-  [SOCIAL_STATUS_DRAFT]: "bg-chart-4",
-  [SOCIAL_STATUS_FAILED]: "bg-destructive",
 };
 
 const getWeekStartsOn = (): WeekStartsOn => {
@@ -110,14 +108,15 @@ const getWeekStartsOn = (): WeekStartsOn => {
 
 export default function Calendar() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, workspaceId } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewType>("month");
-  const [events, setEvents] = useState<CalendarEventDetail[]>([]);
+  const [events, setEvents] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEventDetail | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<ContentItem | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const country = useMemo<CountryCode>(() => detectUserCountry(), []);
   const weekStartsOn = useMemo<WeekStartsOn>(() => getWeekStartsOn(), []);
   const fetchRequestIdRef = useRef(0);
@@ -138,19 +137,22 @@ export default function Calendar() {
   }, [currentDate, view, weekStartsOn]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
     void fetchEvents();
-  }, [user, visibleRange.start.getTime(), visibleRange.end.getTime()]);
+  }, [user, workspaceId, visibleRange.start.getTime(), visibleRange.end.getTime()]);
 
   const fetchEvents = async () => {
     const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
     setFetchError(null);
     try {
+      // For recurring schedules we might need to fetch "anchor" items that started before the
+      // visible range but still have occurrences inside it.
+      const fetchStart = subMonths(visibleRange.start, 12);
       const startIso = new Date(
-        visibleRange.start.getFullYear(),
-        visibleRange.start.getMonth(),
-        visibleRange.start.getDate(),
+        fetchStart.getFullYear(),
+        fetchStart.getMonth(),
+        fetchStart.getDate(),
         0,
         0,
         0,
@@ -167,7 +169,7 @@ export default function Calendar() {
       ).toISOString();
 
       const fetchedEvents = await fetchScheduledCalendarEventsForUserInRange(
-        user!.id,
+        workspaceId,
         startIso,
         endIso
       );
@@ -200,17 +202,102 @@ export default function Calendar() {
   const goToToday = () => setCurrentDate(new Date());
 
   const computedEvents = useMemo<CalendarEventComputed[]>(
-    () =>
-      events.map((event) => {
-        const scheduledDate = parseISO(event.scheduled_at);
-        return {
-          ...event,
-          scheduledDate,
-          dateKey: format(scheduledDate, "yyyy-MM-dd"),
-          hour: getHours(scheduledDate),
+    () => {
+      const rangeStart = new Date(
+        visibleRange.start.getFullYear(),
+        visibleRange.start.getMonth(),
+        visibleRange.start.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+      const rangeEnd = new Date(
+        visibleRange.end.getFullYear(),
+        visibleRange.end.getMonth(),
+        visibleRange.end.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      const rangeStartMs = rangeStart.getTime();
+      const rangeEndMs = rangeEnd.getTime();
+
+      const expanded: CalendarEventComputed[] = [];
+
+      for (const baseEvent of events) {
+        const baseAnchor = parseISO(baseEvent.scheduled_at!);
+        const freq = baseEvent.recurrence_frequency ?? "none";
+        const baseScheduledAt = baseEvent.scheduled_at!;
+        const recurrenceUntil = baseEvent.recurrence_until ? parseISO(baseEvent.recurrence_until) : null;
+        const effectiveEndMs = recurrenceUntil
+          ? Math.min(recurrenceUntil.getTime(), rangeEndMs)
+          : rangeEndMs;
+
+        const pushOccurrence = (occurrenceDate: Date, occurrenceIndex: number) => {
+          const occMs = occurrenceDate.getTime();
+          if (occMs < rangeStartMs || occMs > effectiveEndMs) return;
+
+          expanded.push({
+            ...baseEvent,
+            scheduled_at: occurrenceDate.toISOString(),
+            scheduledDate: occurrenceDate,
+            dateKey: format(occurrenceDate, "yyyy-MM-dd"),
+            hour: getHours(occurrenceDate),
+            occurrenceId: `${baseEvent.id}__occ_${occurrenceIndex}`,
+            baseScheduledAt,
+            isAnchorOccurrence: occurrenceIndex === 0,
+          });
         };
-      }),
-    [events]
+
+        if (freq === "none" || !freq) {
+          pushOccurrence(baseAnchor, 0);
+          continue;
+        }
+
+        if (freq === "weekly") {
+          const diffDays = (rangeStartMs - baseAnchor.getTime()) / (1000 * 60 * 60 * 24);
+          const startIndex = diffDays <= 0 ? 0 : Math.max(0, Math.ceil(diffDays / 7));
+
+          // Safety cap to avoid runaway loops.
+          for (let i = startIndex; i < startIndex + 120; i++) {
+            const occDate = addDays(addWeeks(baseAnchor, i), 0);
+            if (occDate.getTime() > effectiveEndMs) break;
+            pushOccurrence(occDate, i);
+          }
+          continue;
+        }
+
+        if (freq === "monthly") {
+          const monthsDiff =
+            (rangeStart.getFullYear() - baseAnchor.getFullYear()) * 12 +
+            (rangeStart.getMonth() - baseAnchor.getMonth());
+
+          let i = Math.max(0, monthsDiff);
+          let occDate = addMonths(baseAnchor, i);
+          while (occDate.getTime() < rangeStartMs) {
+            i += 1;
+            occDate = addMonths(baseAnchor, i);
+            if (i > 240) break;
+          }
+
+          for (let j = i; j < i + 120; j++) {
+            occDate = addMonths(baseAnchor, j);
+            if (occDate.getTime() > effectiveEndMs) break;
+            pushOccurrence(occDate, j);
+          }
+          continue;
+        }
+
+        // Unknown frequency: fall back to anchor only.
+        pushOccurrence(baseAnchor, 0);
+      }
+
+      expanded.sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
+      return expanded;
+    },
+    [events, visibleRange.start.getTime(), visibleRange.end.getTime()]
   );
 
   const eventsByDateKey = useMemo(() => {
@@ -230,44 +317,103 @@ export default function Calendar() {
   const getEventsForDay = (day: Date) => eventsByDateKey.get(format(day, "yyyy-MM-dd")) || [];
 
   const totalPosts = useMemo(
-    () => events.filter((e) => e.type === "post").length,
+    () => events.filter((e) => e.kind === "post").length,
     [events]
   );
   const totalStories = useMemo(
-    () => events.filter((e) => e.type === "story").length,
+    () => events.filter((e) => e.kind === "story").length,
     [events]
   );
 
-  const handleEventClick = (event: CalendarEventDetail) => {
-    setSelectedEvent(event);
-    setModalOpen(true);
+  const handleEventClick = async (event: CalendarEventComputed) => {
+    try {
+      // For derived recurrence occurrences, reschedule the stored content so edit/delete in the modal
+      // stays consistent with what the user clicked.
+      if (!workspaceId) return;
+      if (!event.isAnchorOccurrence && event.scheduled_at !== event.baseScheduledAt) {
+        await rescheduleCalendarEventForUser(workspaceId, event.id, event.kind, event.scheduled_at!);
+        await fetchEvents();
+      }
+
+      setSelectedEvent(event);
+      setModalOpen(true);
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to open event", variant: "destructive" });
+      console.error(err);
+    }
   };
 
-  const handleDeleteEvent = async (id: string, type: "post" | "story") => {
+  const handleDeleteEvent = async (id: string, kind: ContentKind) => {
+    if (!workspaceId) return;
     try {
-      await deleteCalendarEventForUser(user!.id, id, type);
-      toast({ title: "Deleted", description: `${type === "post" ? "Post" : "Story"} deleted successfully` });
+      await deleteCalendarEventForUser(workspaceId, id, kind);
+      toast({ title: "Deleted", description: `${kind === "post" ? "Post" : "Story"} deleted successfully` });
       fetchEvents();
     } catch {
       toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
     }
   };
 
+  const handleDropReschedule = async (e: React.DragEvent, day: Date, hour: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setDragOverKey(null);
+
+    const payloadStr = e.dataTransfer.getData("application/x-calendar-event");
+    if (!payloadStr) return;
+
+    let payload: { id: string; kind: ContentKind; sourceScheduledAtIso: string } | null = null;
+    try {
+      payload = JSON.parse(payloadStr);
+    } catch {
+      payload = null;
+    }
+    if (!payload || !workspaceId) return;
+
+    const sourceDate = parseISO(payload.sourceScheduledAtIso);
+    const targetDate = new Date(day);
+    targetDate.setHours(hour, sourceDate.getMinutes(), sourceDate.getSeconds(), 0);
+
+    try {
+      await rescheduleCalendarEventForUser(workspaceId, payload.id, payload.kind, targetDate.toISOString());
+      await fetchEvents();
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to reschedule", variant: "destructive" });
+      console.error(err);
+    }
+  };
+
   // Render a single event chip
-  const renderEventChip = (event: CalendarEventComputed, compact = false) => {
-    const isPost = event.type === "post";
+  const renderEventChip = (event: CalendarEventComputed, compact = false, dragEnabled = false) => {
+    const isPost = event.kind === "post";
     const time = format(event.scheduledDate, "h:mm a");
-    const statusDot = statusDotColors[event.status];
+    const pipelineState = getContentPipelineState({
+      contentStatus: event.status,
+      publishJobState: event.publish_job_state ?? null,
+    });
+    const statusDot = getContentPipelineStateDotClassName(pipelineState);
 
     return (
       <button
         type="button"
-        key={event.id}
+        key={event.occurrenceId}
         onClick={(e) => {
           e.stopPropagation();
           handleEventClick(event);
         }}
-        aria-label={`Open ${event.type}: ${event.title}`}
+        draggable={dragEnabled}
+        onDragStart={(e) => {
+          if (!dragEnabled) return;
+          const payload = {
+            id: event.id,
+            kind: event.kind,
+            sourceScheduledAtIso: event.scheduled_at!,
+          };
+          e.dataTransfer.setData("application/x-calendar-event", JSON.stringify(payload));
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        aria-label={`Open ${event.kind}: ${event.title}`}
         className={cn(
           "group/chip cursor-pointer rounded-md px-2 py-1.5 text-xs mb-1 transition-all duration-200 text-left",
           "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]",
@@ -450,9 +596,24 @@ export default function Calendar() {
               </div>
               {days.map((day) => {
                 const hourEvents = getEventsForDay(day).filter((e) => e.hour === hour);
+                const dropKey = `${format(day, "yyyy-MM-dd")}__${hour}`;
                 return (
-                  <div key={day.toString() + hour} className="min-h-[50px] p-0.5 border-r border-border/15 last:border-r-0">
-                    {hourEvents.map((event) => renderEventChip(event))}
+                  <div
+                    key={dropKey}
+                    className={cn(
+                      "min-h-[50px] p-0.5 border-r border-border/15 last:border-r-0 transition-colors",
+                      dragOverKey === dropKey && "bg-primary/10"
+                    )}
+                    onDragOver={(e) => {
+                      if (!workspaceId) return;
+                      e.preventDefault();
+                      setDragOverKey(dropKey);
+                      e.dataTransfer.dropEffect = "move";
+                    }}
+                    onDragLeave={() => setDragOverKey(null)}
+                    onDrop={(e) => handleDropReschedule(e, day, hour)}
+                  >
+                    {hourEvents.map((event) => renderEventChip(event, false, true))}
                   </div>
                 );
               })}
@@ -494,15 +655,39 @@ export default function Calendar() {
                 <div className="p-2.5 text-xs text-muted-foreground text-right pr-3 border-r border-border/30 font-medium tabular-nums">
                   {format(new Date().setHours(hour, 0), "h:mm a")}
                 </div>
-                <div className="min-h-[60px] p-1.5">
+                <div
+                  className={cn(
+                    "min-h-[60px] p-1.5 transition-colors",
+                    dragOverKey === `${format(currentDate, "yyyy-MM-dd")}__${hour}` && "bg-primary/10"
+                  )}
+                  onDragOver={(e) => {
+                    if (!workspaceId) return;
+                    e.preventDefault();
+                    setDragOverKey(`${format(currentDate, "yyyy-MM-dd")}__${hour}`);
+                    e.dataTransfer.dropEffect = "move";
+                  }}
+                  onDragLeave={() => setDragOverKey(null)}
+                  onDrop={(e) => handleDropReschedule(e, currentDate, hour)}
+                >
                   {hourEvents.map((event) => (
-                    <div
-                      key={event.id}
+                    <button
+                      key={event.occurrenceId}
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        const payload = {
+                          id: event.id,
+                          kind: event.kind,
+                          sourceScheduledAtIso: event.scheduled_at!,
+                        };
+                        e.dataTransfer.setData("application/x-calendar-event", JSON.stringify(payload));
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
                       onClick={() => handleEventClick(event)}
                       className={cn(
                         "cursor-pointer rounded-lg p-3 mb-2 transition-all duration-200",
                         "hover:shadow-md hover:scale-[1.005] active:scale-[0.995]",
-                        event.type === "post"
+                        event.kind === "post"
                           ? "bg-primary/8 border-l-4 border-primary hover:bg-primary/12"
                           : "bg-accent/8 border-l-4 border-accent hover:bg-accent/12"
                       )}
@@ -510,9 +695,9 @@ export default function Calendar() {
                       <div className="flex items-center gap-3">
                         <div className={cn(
                           "p-2 rounded-lg",
-                          event.type === "post" ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
+                          event.kind === "post" ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
                         )}>
-                          {event.type === "post" ? <FileText className="h-4 w-4" /> : <Image className="h-4 w-4" />}
+                          {event.kind === "post" ? <FileText className="h-4 w-4" /> : <Image className="h-4 w-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <span className="font-semibold text-sm text-foreground block truncate">{event.title}</span>
@@ -521,12 +706,19 @@ export default function Calendar() {
                             <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
                             <Badge variant="outline" className={cn(
                               "text-[10px] py-0 px-1.5 h-4 font-medium border capitalize",
-                              event.status === SOCIAL_STATUS_PUBLISHED && "border-chart-3/30 text-chart-3",
-                              event.status === SOCIAL_STATUS_SCHEDULED && "border-primary/30 text-primary",
-                              event.status === SOCIAL_STATUS_DRAFT && "border-chart-4/30 text-chart-4",
-                              event.status === SOCIAL_STATUS_FAILED && "border-destructive/30 text-destructive",
+                              getContentPipelineStateBadgeClassName(
+                                getContentPipelineState({
+                                  contentStatus: event.status,
+                                  publishJobState: event.publish_job_state ?? null,
+                                })
+                              ),
                             )}>
-                              {event.status}
+                              {getContentPipelineStateLabel(
+                                getContentPipelineState({
+                                  contentStatus: event.status,
+                                  publishJobState: event.publish_job_state ?? null,
+                                })
+                              )}
                             </Badge>
                             {event.platforms && event.platforms.length > 0 && (
                               <div className="flex items-center gap-1 ml-1">
@@ -545,7 +737,7 @@ export default function Calendar() {
                           <img src={event.image} alt="" className="w-10 h-10 rounded-md object-cover shrink-0" />
                         )}
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -727,6 +919,9 @@ export default function Calendar() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         onDelete={handleDeleteEvent}
+        onAfterReview={() => {
+          void fetchEvents();
+        }}
       />
     </DashboardLayout>
   );

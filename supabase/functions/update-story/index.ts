@@ -33,13 +33,15 @@ const updateStorySchema = z.object({
   title: z.string().max(500).optional(),
   description: z.string().max(5000).optional(),
   text: z.string().max(10000).optional(),
-  status: z.enum(['draft', 'scheduled', 'published']).optional(),
+  status: z.enum(['draft', 'scheduled', 'pending_approval', 'published', 'failed']).optional(),
   scheduled_at: z.string().datetime().nullable().optional(),
   type_of_story: z.string().max(100).nullable().optional(),
   platforms: z.array(z.string().max(50)).nullable().optional(),
   account_type: z.string().max(2000).nullable().optional(),
   image: z.string().max(2000).nullable().optional(),
   video: z.string().max(2000).nullable().optional(),
+  recurrence_frequency: z.enum(['none', 'weekly', 'monthly']).optional(),
+  recurrence_until: z.string().datetime().nullable().optional(),
 }).strict();
 
 Deno.serve(async (req) => {
@@ -105,7 +107,14 @@ Deno.serve(async (req) => {
     });
 
     const body = await req.json();
-    const { story_id, user_id: bodyUserId, ...rawUpdateData } = body;
+    const { story_id, workspace_id, user_id: bodyUserId, ...rawUpdateData } = body;
+
+    if (!workspace_id) {
+      return new Response(
+        JSON.stringify({ error: 'workspace_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // For API key auth, user_id must be provided in body
     // For JWT auth, use the authenticated user's ID
@@ -123,6 +132,14 @@ Deno.serve(async (req) => {
     if (!userIdResult.success) {
       return new Response(
         JSON.stringify({ error: 'Invalid user_id format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const workspaceIdResult = uuidSchema.safeParse(workspace_id);
+    if (!workspaceIdResult.success) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid workspace_id format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -156,10 +173,34 @@ Deno.serve(async (req) => {
 
     const updateData = validationResult.data;
 
-    // Verify ownership - verify against provided user_id
+    // Verify workspace membership
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error('Error checking workspace membership:', membershipError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify workspace membership' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!membership) {
+      console.error('Unauthorized: Not a workspace member');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify story is within the workspace
     const { data: story, error: fetchError } = await supabase
       .from('stories')
-      .select('user_id')
+      .select('workspace_id')
       .eq('id', story_id)
       .single();
 
@@ -171,10 +212,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (story.user_id !== targetUserId) {
-      console.error('Unauthorized: User does not own this story');
+    if (story.workspace_id !== workspace_id) {
+      console.error('Unauthorized: Story does not belong to the workspace');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Unauthorized - Wrong workspace' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -185,6 +226,7 @@ Deno.serve(async (req) => {
       .from('stories')
       .update(updateData)
       .eq('id', story_id)
+      .eq('workspace_id', workspace_id)
       .select()
       .single();
 

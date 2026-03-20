@@ -33,7 +33,7 @@ const updatePostSchema = z.object({
   title: z.string().max(500).optional(),
   description: z.string().max(5000).nullable().optional(),
   text: z.string().max(10000).nullable().optional(),
-  status: z.enum(['draft', 'scheduled', 'published']).optional(),
+  status: z.enum(['draft', 'scheduled', 'pending_approval', 'published', 'failed']).optional(),
   scheduled_at: z.string().datetime().nullable().optional(),
   type_of_post: z.string().max(100).nullable().optional(),
   platforms: z.array(z.string().max(50)).nullable().optional(),
@@ -79,12 +79,12 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { post_id, user_id, ...rawUpdateData } = body;
+    const { post_id, user_id, workspace_id, ...rawUpdateData } = body;
 
-    // Validate user_id is required
-    if (!user_id) {
+    // Validate required fields
+    if (!user_id || !workspace_id) {
       return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
+        JSON.stringify({ error: 'user_id and workspace_id are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -94,6 +94,14 @@ Deno.serve(async (req) => {
     if (!userIdResult.success) {
       return new Response(
         JSON.stringify({ error: 'Invalid user_id format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const workspaceIdResult = uuidSchema.safeParse(workspace_id);
+    if (!workspaceIdResult.success) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid workspace_id format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -127,10 +135,33 @@ Deno.serve(async (req) => {
 
     const updateData = validationResult.data;
 
-    // Verify ownership - verify against provided user_id
+    // Verify the caller is a member of the workspace
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', user_id)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error('Error checking workspace membership:', membershipError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify workspace membership' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Not a workspace member' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify the post belongs to the workspace
     const { data: post, error: fetchError } = await supabase
       .from('posts')
-      .select('user_id')
+      .select('workspace_id')
       .eq('id', post_id)
       .single();
 
@@ -142,10 +173,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (post.user_id !== user_id) {
-      console.error('Unauthorized: User does not own this post');
+    if (post.workspace_id !== workspace_id) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Unauthorized - Wrong workspace' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -156,6 +186,7 @@ Deno.serve(async (req) => {
       .from('posts')
       .update(updateData)
       .eq('id', post_id)
+      .eq('workspace_id', workspace_id)
       .select()
       .single();
 

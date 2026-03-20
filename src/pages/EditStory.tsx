@@ -38,15 +38,18 @@ const storySchema = z.object({
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   scheduled_at: z.string().optional(),
-  status: z.enum(["draft", "scheduled", "published"]),
+  status: z.enum(["draft", "scheduled", "pending_approval", "published", "failed"]),
+  recurrence_frequency: z.enum(["none", "weekly", "monthly"]).optional(),
+  recurrence_until: z.string().optional().nullable(),
 });
 
 export default function EditStory() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, workspaceId } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const approvalsEnabled = import.meta.env.VITE_ENABLE_APPROVALS === "true";
   const [fetchingStory, setFetchingStory] = useState(true);
 
   const [typeOfStory, setTypeOfStory] = useState("");
@@ -57,6 +60,8 @@ export default function EditStory() {
   const [existingMediaUrl, setExistingMediaUrl] = useState("");
   const [status, setStatus] = useState("draft");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<"none" | "weekly" | "monthly">("none");
+  const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
 
   // Use the platform accounts hook
@@ -105,10 +110,10 @@ export default function EditStory() {
   }, [user]);
 
   useEffect(() => {
-    if (id && user) {
+    if (id && user && workspaceId) {
       fetchStory();
     }
-  }, [id, user]);
+  }, [id, user, workspaceId]);
 
   const fetchStory = async () => {
     try {
@@ -116,7 +121,7 @@ export default function EditStory() {
         .from("stories")
         .select("*")
         .eq("id", id)
-        .eq("user_id", user!.id)
+        .eq("workspace_id", workspaceId)
         .single();
 
       if (error) throw error;
@@ -144,6 +149,18 @@ export default function EditStory() {
           setScheduledAt(localDate.toISOString().slice(0, 16));
         } else {
           setScheduledAt("");
+        }
+
+        setRecurrenceFrequency(
+          (data.recurrence_frequency as "none" | "weekly" | "monthly" | null | undefined) ?? "none"
+        );
+        if (data.recurrence_until) {
+          const date = new Date(data.recurrence_until);
+          const offset = date.getTimezoneOffset();
+          const localDate = new Date(date.getTime() - offset * 60 * 1000);
+          setRecurrenceUntil(localDate.toISOString().slice(0, 16));
+        } else {
+          setRecurrenceUntil("");
         }
       }
     } catch (error: any) {
@@ -244,6 +261,11 @@ export default function EditStory() {
     setLoading(true);
 
     try {
+      if (!user || !workspaceId) {
+        toast.error("Workspace not ready");
+        return;
+      }
+
       let uploadedImageUrl = existingMediaUrl;
       let uploadedVideoUrl = existingMediaUrl;
 
@@ -278,6 +300,8 @@ export default function EditStory() {
         accountTypeValue = selectedAccountIds.join(",");
       }
 
+      const finalStatus = approvalsEnabled && status === "scheduled" ? "pending_approval" : status;
+
       const storyData = {
         type_of_story: typeOfStory,
         platforms,
@@ -286,7 +310,9 @@ export default function EditStory() {
         image: typeOfStory === "image" ? uploadedImageUrl || "" : "",
         video: typeOfStory === "video" ? uploadedVideoUrl || "" : "",
         scheduled_at: formattedScheduledAt,
-        status: status as "draft" | "scheduled" | "published",
+        status: finalStatus as any,
+        recurrence_frequency: recurrenceFrequency,
+        recurrence_until: recurrenceUntil ? new Date(recurrenceUntil).toISOString() : null,
       };
 
       storySchema.parse(storyData);
@@ -295,6 +321,7 @@ export default function EditStory() {
       const { data: updateResult, error } = await supabase.functions.invoke('update-story', {
         body: {
           story_id: id,
+          workspace_id: workspaceId,
           type_of_story: storyData.type_of_story,
           platforms: storyData.platforms,
           account_type: storyData.account_type ?? null,
@@ -303,6 +330,8 @@ export default function EditStory() {
           video: storyData.video || null,
           scheduled_at: storyData.scheduled_at ?? null,
           status: storyData.status,
+          recurrence_frequency: storyData.recurrence_frequency ?? "none",
+          recurrence_until: storyData.recurrence_until ?? null,
         }
       });
 
@@ -582,34 +611,68 @@ export default function EditStory() {
 
               {/* Status and Schedule */}
               {showSchedule && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="status">
-                      Status <span className="text-destructive">*</span>
-                    </Label>
-                    <Select value={status} onValueChange={setStatus} required>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="scheduled">Scheduled</SelectItem>
-                        <SelectItem value="published">Published</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="status">
+                        Status <span className="text-destructive">*</span>
+                      </Label>
+                      <Select value={status} onValueChange={setStatus} required>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="scheduled">Scheduled</SelectItem>
+                          <SelectItem value="published">Published</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="scheduledAt">
+                        Schedule Date & Time <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="scheduledAt"
+                        type="datetime-local"
+                        value={scheduledAt}
+                        onChange={(e) => setScheduledAt(e.target.value)}
+                        required={showSchedule}
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="scheduledAt">
-                      Schedule Date & Time <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="scheduledAt"
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(e) => setScheduledAt(e.target.value)}
-                      required={showSchedule}
-                    />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Recurrence</Label>
+                      <Select
+                        value={recurrenceFrequency}
+                        onValueChange={(v) =>
+                          setRecurrenceFrequency(v as "none" | "weekly" | "monthly")
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select recurrence" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="recurrenceUntil">Recurrence Until</Label>
+                      <Input
+                        id="recurrenceUntil"
+                        type="datetime-local"
+                        value={recurrenceUntil}
+                        onChange={(e) => setRecurrenceUntil(e.target.value)}
+                        disabled={recurrenceFrequency === "none"}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

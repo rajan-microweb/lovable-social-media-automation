@@ -34,18 +34,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // API Key authentication
-    const apiKey = req.headers.get('x-api-key');
-    const expectedApiKey = Deno.env.get('N8N_API_KEY');
-
-    if (!apiKey || apiKey !== expectedApiKey) {
-      console.error('Invalid or missing API key');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Rate limiting by client IP
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
     if (!checkRateLimit(clientIp)) {
@@ -58,25 +46,14 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Create service client for database operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     const body = await req.json();
-    const { file_path, file_url, user_id } = body;
-
-    // Validate user_id is required
-    if (!user_id) {
-      return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const { file_path, file_url, workspace_id, user_id: bodyUserId } = body;
 
     const uuidSchema = z.string().uuid();
-    const userIdResult = uuidSchema.safeParse(user_id);
-    if (!userIdResult.success) {
+    const workspaceIdResult = uuidSchema.safeParse(workspace_id);
+    if (!workspaceIdResult.success) {
       return new Response(
-        JSON.stringify({ error: 'Invalid user_id format' }),
+        JSON.stringify({ error: 'Invalid or missing workspace_id format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -98,11 +75,87 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Note: Ownership verification is skipped since API key authentication
-    // already confirms the request is from a trusted n8n workflow.
-    // The user_id is still validated and logged for audit purposes.
+    // Auth: support both (a) external API key auth and (b) frontend JWT auth.
+    const apiKey = req.headers.get('x-api-key');
+    const expectedApiKey = Deno.env.get('N8N_API_KEY');
+    const authHeader = req.headers.get('Authorization');
 
-    console.log('Deleting file from bucket:', filePath, 'for user:', user_id);
+    let targetUserId: string | null = null;
+    const isApiKeyAuth = apiKey && apiKey === expectedApiKey;
+
+    if (isApiKeyAuth) {
+      // For API key auth, user_id must be provided in body.
+      if (!bodyUserId) {
+        return new Response(
+          JSON.stringify({ error: 'user_id is required for API key auth' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      const userIdResult = uuidSchema.safeParse(bodyUserId);
+      if (!userIdResult.success) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid user_id format' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      targetUserId = bodyUserId;
+    } else if (authHeader?.startsWith('Bearer ')) {
+      // JWT auth: validate token and delete as the signed-in user.
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      targetUserId = user.id;
+    } else {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Missing authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Ensure the file being deleted belongs to the authenticated user prefix.
+    if (!filePath.startsWith(`${targetUserId}/`)) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden - file_path does not belong to user' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Verify workspace membership before deleting.
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    if (membershipError) {
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify workspace membership' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Not a workspace member' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Deleting file from bucket:', filePath, 'for user:', targetUserId);
 
     const { data, error } = await supabase
       .storage

@@ -1,3 +1,10 @@
+import { ContentView } from "./Content";
+
+export default function Posts() {
+  return <ContentView initialMode="posts" showModeTabs={false} />;
+}
+
+/*
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -358,3 +365,4 @@ export default function Posts() {
     </DashboardLayout>
   );
 }
+*/

@@ -7,11 +7,12 @@ export const SOCIAL_PLATFORM_INSTAGRAM = "instagram" as const;
 export const SOCIAL_PLATFORM_YOUTUBE = "youtube" as const;
 export const SOCIAL_PLATFORM_TWITTER = "twitter" as const;
 
-export const SOCIAL_STATUSES = ["draft", "scheduled", "published", "failed"] as const;
+export const SOCIAL_STATUSES = ["draft", "scheduled", "pending_approval", "published", "failed"] as const;
 export type SocialStatus = (typeof SOCIAL_STATUSES)[number];
 
 export const SOCIAL_STATUS_DRAFT = "draft" as const;
 export const SOCIAL_STATUS_SCHEDULED = "scheduled" as const;
+export const SOCIAL_STATUS_PENDING_APPROVAL = "pending_approval" as const;
 export const SOCIAL_STATUS_PUBLISHED = "published" as const;
 export const SOCIAL_STATUS_FAILED = "failed" as const;
 

@@ -38,14 +38,23 @@ const storySchema = z.object({
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   scheduled_at: z.string().optional(),
-  status: z.enum(["draft", "scheduled", "published"]),
+  status: z.enum(["draft", "scheduled", "pending_approval", "published", "failed"]),
+  recurrence_frequency: z.enum(["none", "weekly", "monthly"]).optional(),
+  recurrence_until: z.string().optional().nullable(),
 });
 
 export default function CreateStory() {
-  const { user } = useAuth();
+  const { user, workspaceId } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const approvalsEnabled = import.meta.env.VITE_ENABLE_APPROVALS === "true";
   const [uploading, setUploading] = useState(false);
+
+  // Content templates (Publer-like quick apply)
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [pendingTemplate, setPendingTemplate] = useState<any | null>(null);
 
   const [typeOfStory, setTypeOfStory] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
@@ -54,6 +63,8 @@ export default function CreateStory() {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [status, setStatus] = useState("draft");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<"none" | "weekly" | "monthly">("none");
+  const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
 
   // Use the platform accounts hook
@@ -103,6 +114,33 @@ export default function CreateStory() {
     fetchConnectedPlatforms();
   }, [user]);
 
+  // Load global + workspace templates for stories.
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      if (!user || !workspaceId) return;
+      setTemplatesLoading(true);
+      try {
+        const { data, error } = await (supabase as any)
+          .from("content_templates" as any)
+          .select("*")
+          .eq("kind", "story")
+          .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setTemplates(data || []);
+      } catch (e: any) {
+        console.error(e);
+        toast.error(e?.message || "Failed to load content templates");
+        setTemplates([]);
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
+
+    fetchTemplates();
+  }, [user, workspaceId]);
+
   useEffect(() => {
     if (typeOfStory) {
       const newPlatforms = PLATFORM_MAP[typeOfStory] || [];
@@ -111,6 +149,44 @@ export default function CreateStory() {
       setSelectedAccountIds([]);
     }
   }, [typeOfStory]);
+
+  // Apply a selected template once `typeOfStory` is set.
+  useEffect(() => {
+    if (!pendingTemplate) return;
+    if (!pendingTemplate.type_of_story) return;
+    if (typeOfStory !== pendingTemplate.type_of_story) return;
+
+    const overrides = pendingTemplate.overrides || {};
+
+    setPlatforms(
+      Array.isArray(overrides.platforms)
+        ? overrides.platforms.map((p: any) => String(p).toLowerCase())
+        : []
+    );
+    setSelectedAccountIds([]);
+
+    setText(overrides.textContent ?? overrides.text ?? "");
+    setImageUrl(overrides.imageUrl ?? overrides.image_url ?? "");
+    setVideoUrl(overrides.videoUrl ?? overrides.video_url ?? "");
+    setMediaFile(null);
+
+    setPendingTemplate(null);
+  }, [pendingTemplate, typeOfStory]);
+
+  const handleTemplateSelection = (templateId: string) => {
+    if (templateId === "none") {
+      setSelectedTemplateId("");
+      setPendingTemplate(null);
+      return;
+    }
+
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+
+    setSelectedTemplateId(templateId);
+    setPendingTemplate(tpl);
+    setTypeOfStory(tpl.type_of_story || "");
+  };
 
   // Reset selected accounts when platforms change
   useEffect(() => {
@@ -198,6 +274,11 @@ export default function CreateStory() {
     setLoading(true);
 
     try {
+      if (!user || !workspaceId) {
+        toast.error("Workspace not ready. Please try again.");
+        return;
+      }
+
       let uploadedImageUrl = "";
       let uploadedVideoUrl = "";
 
@@ -229,6 +310,8 @@ export default function CreateStory() {
       // Convert datetime-local format to ISO 8601
       const formattedScheduledAt = scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
 
+      const finalStatus = approvalsEnabled && status === "scheduled" ? "pending_approval" : (status as typeof status);
+
       const storyData = {
         type_of_story: typeOfStory,
         platforms,
@@ -237,13 +320,16 @@ export default function CreateStory() {
         image: uploadedImageUrl || "",
         video: uploadedVideoUrl || "",
         scheduled_at: formattedScheduledAt,
-        status: status as "draft" | "scheduled" | "published",
+        status: finalStatus as any,
+        recurrence_frequency: recurrenceFrequency,
+        recurrence_until: recurrenceUntil ? new Date(recurrenceUntil).toISOString() : null,
       };
 
       storySchema.parse(storyData);
 
       const { error } = await supabase.from("stories").insert({
         user_id: user!.id,
+        workspace_id: workspaceId,
         title: "",
         type_of_story: storyData.type_of_story,
         platforms: storyData.platforms,
@@ -253,6 +339,8 @@ export default function CreateStory() {
         video: storyData.video || null,
         scheduled_at: storyData.scheduled_at ?? null,
         status: storyData.status,
+        recurrence_frequency: storyData.recurrence_frequency ?? "none",
+        recurrence_until: storyData.recurrence_until ?? null,
       });
 
       if (error) throw error;
@@ -294,6 +382,37 @@ export default function CreateStory() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Content Template */}
+              <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Content Template</Label>
+                </div>
+
+                <Select value={selectedTemplateId || "none"} onValueChange={handleTemplateSelection}>
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        templatesLoading ? "Loading templates..." : templates.length ? "Select a template (optional)" : "No templates available"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No template</SelectItem>
+                    {templates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.template_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {pendingTemplate && (
+                  <p className="text-xs text-muted-foreground">
+                    Applying template...
+                  </p>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="typeOfStory">
                   Type of Story <span className="text-destructive">*</span>
@@ -492,33 +611,67 @@ export default function CreateStory() {
 
               {/* Status and Schedule */}
               {showSchedule && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="status">
-                      Status <span className="text-destructive">*</span>
-                    </Label>
-                    <Select value={status} onValueChange={setStatus} required>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="scheduled">Scheduled</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="status">
+                        Status <span className="text-destructive">*</span>
+                      </Label>
+                      <Select value={status} onValueChange={setStatus} required>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="scheduled">Scheduled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="scheduledAt">
+                        Schedule Date & Time <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="scheduledAt"
+                        type="datetime-local"
+                        value={scheduledAt}
+                        onChange={(e) => setScheduledAt(e.target.value)}
+                        required={showSchedule}
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="scheduledAt">
-                      Schedule Date & Time <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="scheduledAt"
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(e) => setScheduledAt(e.target.value)}
-                      required={showSchedule}
-                    />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Recurrence</Label>
+                      <Select
+                        value={recurrenceFrequency}
+                        onValueChange={(v) =>
+                          setRecurrenceFrequency(v as "none" | "weekly" | "monthly")
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select recurrence" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="recurrenceUntil">Recurrence Until</Label>
+                      <Input
+                        id="recurrenceUntil"
+                        type="datetime-local"
+                        value={recurrenceUntil}
+                        onChange={(e) => setRecurrenceUntil(e.target.value)}
+                        disabled={recurrenceFrequency === "none"}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

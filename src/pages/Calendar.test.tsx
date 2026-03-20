@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { startOfMonth, endOfMonth } from "date-fns";
+import { startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Calendar from "./Calendar";
 import type { ReactNode } from "react";
@@ -11,6 +11,7 @@ const authState = {
   user: { id: "u1" } as { id: string },
   loading: false,
   isAdmin: false,
+  workspaceId: "u1",
 };
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -40,10 +41,12 @@ describe("Calendar", () => {
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(monthStart);
 
+    const fetchStart = subMonths(monthStart, 12);
+
     const startIso = new Date(
-      monthStart.getFullYear(),
-      monthStart.getMonth(),
-      monthStart.getDate(),
+      fetchStart.getFullYear(),
+      fetchStart.getMonth(),
+      fetchStart.getDate(),
       0,
       0,
       0,
@@ -73,7 +76,7 @@ describe("Calendar", () => {
     const events: CalendarEventDetail[] = [
       {
         id: "post-1",
-        type: "post",
+        kind: "post",
         title: "Post Chip",
         description: null,
         text: null,
@@ -89,7 +92,7 @@ describe("Calendar", () => {
       },
       {
         id: "story-1",
-        type: "story",
+        kind: "story",
         title: "Story Chip",
         description: null,
         text: null,
@@ -113,7 +116,7 @@ describe("Calendar", () => {
     );
 
     expect(fetchScheduledCalendarEventsForUserInRangeMock).toHaveBeenCalledWith(
-      authState.user.id,
+      authState.workspaceId,
       startIso,
       endIso
     );

@@ -91,7 +91,14 @@ Deno.serve(async (req) => {
     });
 
     const body = await req.json();
-    const { story_id, user_id: bodyUserId } = body;
+    const { story_id, workspace_id, user_id: bodyUserId } = body;
+
+    if (!workspace_id) {
+      return new Response(
+        JSON.stringify({ error: "workspace_id is required" }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // For API key auth, user_id must be provided in body
     // For JWT auth, use the authenticated user's ID
@@ -113,6 +120,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    const workspaceIdResult = uuidSchema.safeParse(workspace_id);
+    if (!workspaceIdResult.success) {
+      return new Response(
+        JSON.stringify({ error: "Invalid workspace_id format" }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!story_id) {
       console.error('Missing story_id in request');
       return new Response(
@@ -123,10 +138,33 @@ Deno.serve(async (req) => {
 
     console.log('Deleting story:', story_id, 'for user:', targetUserId);
 
-    // Verify ownership - use maybeSingle to handle already-deleted stories gracefully
+    // Verify membership + ownership by workspace (idempotent delete)
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error('Error checking workspace membership:', membershipError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify workspace membership' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Not a workspace member' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch story workspace to prevent cross-workspace deletes
     const { data: story, error: fetchError } = await supabase
       .from('stories')
-      .select('user_id')
+      .select('workspace_id')
       .eq('id', story_id)
       .maybeSingle();
 
@@ -147,10 +185,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (story.user_id !== targetUserId) {
-      console.error('Unauthorized: User does not own this story');
+    if (story.workspace_id !== workspace_id) {
+      console.error('Unauthorized: Story does not belong to the workspace');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Unauthorized - Wrong workspace' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -159,7 +197,8 @@ Deno.serve(async (req) => {
     const { error } = await supabase
       .from('stories')
       .delete()
-      .eq('id', story_id);
+      .eq('id', story_id)
+      .eq('workspace_id', workspace_id);
 
     if (error) {
       console.error('Error deleting story:', error);

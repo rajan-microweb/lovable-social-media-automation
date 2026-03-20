@@ -37,7 +37,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { post_ids, updates } = await req.json();
+    const { post_ids, updates, workspace_id } = await req.json();
+
+    if (!workspace_id) {
+      return new Response(
+        JSON.stringify({ error: "workspace_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!Array.isArray(post_ids) || post_ids.length === 0) {
       return new Response(
@@ -55,10 +62,33 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify ownership of all posts
+    // Verify caller is a member of the workspace
+    const { data: membership, error: membershipError } = await supabase
+      .from("workspace_members")
+      .select("user_id")
+      .eq("workspace_id", workspace_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error("Error checking workspace membership:", membershipError);
+      return new Response(
+        JSON.stringify({ error: "Failed to verify workspace membership" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - Not a workspace member" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify all posts belong to the workspace
     const { data: posts, error: fetchError } = await supabase
       .from("posts")
-      .select("id, user_id")
+      .select("id, workspace_id")
       .in("id", post_ids);
 
     if (fetchError) {
@@ -69,11 +99,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check all posts belong to the user
-    const unauthorized = posts?.filter((p) => p.user_id !== user.id) || [];
+    const unauthorized = posts?.filter((p) => p.workspace_id !== workspace_id) || [];
     if (unauthorized.length > 0 || posts?.length !== post_ids.length) {
       return new Response(
-        JSON.stringify({ error: "You can only update your own posts" }),
+        JSON.stringify({ error: "You can only update posts in the active workspace" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -87,7 +116,8 @@ Deno.serve(async (req) => {
     const { error: updateError } = await supabase
       .from("posts")
       .update(updateData)
-      .in("id", post_ids);
+      .in("id", post_ids)
+      .eq("workspace_id", workspace_id);
 
     if (updateError) {
       console.error("Error updating posts:", updateError);
@@ -97,7 +127,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Bulk updated ${post_ids.length} posts for user ${user.id}`);
+    console.log(`Bulk updated ${post_ids.length} posts for user ${user.id} in workspace ${workspace_id}`);
 
     return new Response(
       JSON.stringify({ success: true, updated: post_ids.length }),

@@ -45,14 +45,16 @@ import type { Post } from "@/types/post";
 import {
   normalizeSocialPlatform,
   type SocialPlatform,
-  type SocialStatus,
 } from "@/types/social";
+import type { PublishJobState } from "@/lib/publishing/statusPipeline";
+import { getContentPipelineState, getContentPipelineStateUI } from "@/lib/publishing/statusPipeline";
 
 interface PostCardProps {
   post: Post;
   isSelected: boolean;
   onToggleSelect: () => void;
   onDelete: (id: string) => void;
+  publishJobState?: PublishJobState | null;
 }
 
 const platformConfig: Record<SocialPlatform, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
@@ -61,13 +63,6 @@ const platformConfig: Record<SocialPlatform, { icon: React.ElementType; color: s
   instagram: { icon: Instagram, color: "text-[#E4405F]", bgColor: "bg-[#E4405F]/10", label: "Instagram" },
   youtube: { icon: Youtube, color: "text-[#FF0000]", bgColor: "bg-[#FF0000]/10", label: "YouTube" },
   twitter: { icon: Twitter, color: "text-[#1DA1F2]", bgColor: "bg-[#1DA1F2]/10", label: "Twitter / X" },
-};
-
-const statusConfig: Record<SocialStatus, { className: string; label: string }> = {
-  published: { className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20", label: "Published" },
-  scheduled: { className: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20", label: "Scheduled" },
-  draft: { className: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20", label: "Draft" },
-  failed: { className: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/20", label: "Failed" },
 };
 
 function getPostTypeConfig(type: string | null) {
@@ -90,12 +85,16 @@ function getPostTypeConfig(type: string | null) {
   }
 }
 
-export function PostCard({ post, isSelected, onToggleSelect, onDelete }: PostCardProps) {
+export function PostCard({ post, isSelected, onToggleSelect, onDelete, publishJobState }: PostCardProps) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const typeConfig = getPostTypeConfig(post.type_of_post);
   const TypeIcon = typeConfig.icon;
-  const status = statusConfig[post.status];
+  const pipelineState = getContentPipelineState({
+    contentStatus: post.status,
+    publishJobState: publishJobState ?? null,
+  });
+  const pipelineUI = getContentPipelineStateUI(pipelineState);
 
   const hasMedia = post.image || post.video || post.pdf;
   const hasLongText = (post.text?.length || 0) > 120;
@@ -165,8 +164,8 @@ export function PostCard({ post, isSelected, onToggleSelect, onDelete }: PostCar
               </p>
             )}
           </div>
-          <Badge variant="outline" className={cn("shrink-0 text-[10px] font-semibold border", status.className)}>
-            {status.label}
+          <Badge variant="outline" className={cn("shrink-0 text-[10px] font-semibold border", pipelineUI.badgeClassName)}>
+            {pipelineUI.label}
           </Badge>
         </div>
 

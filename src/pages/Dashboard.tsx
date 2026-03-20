@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
+import { RecentActivityFeed, type ActivityItem } from "@/components/posts/RecentActivityFeed";
+import { toast } from "sonner";
 
 interface Stats {
   totalPosts: number;
@@ -37,7 +39,7 @@ interface QuickAction {
 }
 
 export default function Dashboard() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, workspaceId } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats>({
     totalPosts: 0,
@@ -48,13 +50,16 @@ export default function Dashboard() {
     publishedStories: 0,
   });
 
+  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+
   useEffect(() => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
 
     const fetchStats = async () => {
       const [postsRes, storiesRes] = await Promise.all([
-        supabase.from("posts").select("status").eq("user_id", user.id),
-        supabase.from("stories").select("status").eq("user_id", user.id),
+        supabase.from("posts").select("status").eq("workspace_id", workspaceId),
+        supabase.from("stories").select("status").eq("workspace_id", workspaceId),
       ]);
 
       const posts = postsRes.data || [];
@@ -70,8 +75,78 @@ export default function Dashboard() {
       });
     };
 
-    fetchStats();
-  }, [user]);
+    const fetchActivity = async () => {
+      setActivityLoading(true);
+      try {
+        const [postsRes, storiesRes] = await Promise.all([
+          supabase
+            .from("posts")
+            .select("id,title,status,platforms,updated_at,created_at")
+            .eq("workspace_id", workspaceId)
+            .order("updated_at", { ascending: false })
+            .limit(10),
+          supabase
+            .from("stories")
+            .select("id,title,status,platforms,updated_at,created_at")
+            .eq("workspace_id", workspaceId)
+            .order("updated_at", { ascending: false })
+            .limit(10),
+        ]);
+
+        const posts = postsRes.data ?? [];
+        const stories = storiesRes.data ?? [];
+
+        const classify = (row: {
+          status: string;
+          created_at: string;
+          updated_at: string;
+        }) => {
+          if (row.status === SOCIAL_STATUS_PUBLISHED) return "Published";
+          if (row.status === SOCIAL_STATUS_SCHEDULED) return "Scheduled";
+          if (row.status === "failed") return "Published (failed)";
+
+          const created = new Date(row.created_at).getTime();
+          const updated = new Date(row.updated_at).getTime();
+          if (Number.isFinite(created) && Number.isFinite(updated) && updated - created < 60_000) {
+            return "Created";
+          }
+          return "Edited";
+        };
+
+        const mapped: ActivityItem[] = [
+          ...posts.map((p: any) => ({
+            id: p.id,
+            type: "post",
+            title: `${classify(p)}: ${p.title || "Untitled"}`,
+            status: p.status,
+            platforms: p.platforms,
+            updated_at: p.updated_at,
+          })),
+          ...stories.map((s: any) => ({
+            id: s.id,
+            type: "story",
+            title: `${classify(s)}: ${s.title || "Untitled"}`,
+            status: s.status,
+            platforms: s.platforms,
+            updated_at: s.updated_at,
+          })),
+        ].sort(
+          (a, b) =>
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        );
+
+        setActivityItems(mapped.slice(0, 12));
+      } catch (e) {
+        console.error("Failed to load recent activity:", e);
+        toast.error("Failed to load recent activity");
+        setActivityItems([]);
+      } finally {
+        setActivityLoading(false);
+      }
+    };
+
+    void Promise.all([fetchStats(), fetchActivity()]);
+  }, [user, workspaceId]);
 
   const statCards = [
     {
@@ -245,6 +320,8 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+
+        {!activityLoading && <RecentActivityFeed items={activityItems} loading={false} />}
       </div>
     </DashboardLayout>
   );

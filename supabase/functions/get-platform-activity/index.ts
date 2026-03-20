@@ -95,12 +95,118 @@ interface PlatformActivityItem {
   };
 }
 
+type AnalyticsPlatformActivityRequest = {
+  workspace_id?: string;
+  platforms?: string[];
+  date_from?: string; // ISO
+  date_to?: string; // ISO
+  max_age_seconds?: number;
+  limit?: number;
+  force?: boolean;
+};
+
+function parseMaybeDate(value: unknown): Date | null {
+  if (!value) return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function toIsoOrDefault(value: unknown, fallback: Date): Date {
+  return parseMaybeDate(value) ?? fallback;
+}
+
+function normalizePlatforms(platforms: unknown): string[] | undefined {
+  if (!Array.isArray(platforms)) return undefined;
+  const normalized = platforms
+    .map((p) => (typeof p === "string" ? p.trim().toLowerCase() : null))
+    .filter((p): p is string => Boolean(p));
+  return normalized.length ? normalized : undefined;
+}
+
+function activityToSnapshotRow(
+  workspaceId: string,
+  sourceUserId: string,
+  activity: PlatformActivityItem,
+): Record<string, unknown> {
+  const engagement = activity.engagement ?? {};
+
+  return {
+    workspace_id: workspaceId,
+    user_id: sourceUserId,
+    platform: activity.platform,
+    account_id: activity.accountId,
+    platform_content_id: activity.id,
+    account_name: activity.accountName,
+    content: activity.content ?? null,
+    media_url: activity.mediaUrl ?? null,
+    permalink: activity.permalink ?? null,
+    published_at: new Date(activity.publishedAt).toISOString(),
+    engagement_likes: engagement.likes ?? null,
+    engagement_comments: engagement.comments ?? null,
+    engagement_shares: engagement.shares ?? null,
+    engagement_views: engagement.views ?? null,
+    fetched_at: new Date().toISOString(),
+  };
+}
+
+function snapshotRowToActivity(row: any): PlatformActivityItem {
+  const engagementLikes = row.engagement_likes ?? null;
+  const engagementComments = row.engagement_comments ?? null;
+  const engagementShares = row.engagement_shares ?? null;
+  const engagementViews = row.engagement_views ?? null;
+
+  const hasAnyEngagement =
+    engagementLikes !== null || engagementComments !== null || engagementShares !== null || engagementViews !== null;
+
+  return {
+    id: String(row.platform_content_id),
+    platform: String(row.platform),
+    accountName: String(row.account_name ?? ""),
+    accountId: String(row.account_id ?? ""),
+    content: String(row.content ?? ""),
+    mediaUrl: row.media_url ?? undefined,
+    permalink: row.permalink ?? undefined,
+    publishedAt: new Date(row.published_at).toISOString(),
+    engagement: hasAnyEngagement
+      ? {
+          likes: engagementLikes === null ? undefined : Number(engagementLikes),
+          comments: engagementComments === null ? undefined : Number(engagementComments),
+          shares: engagementShares === null ? undefined : Number(engagementShares),
+          views: engagementViews === null ? undefined : Number(engagementViews),
+        }
+      : undefined,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    let payload: AnalyticsPlatformActivityRequest = {};
+    if (req.method === "POST") {
+      try {
+        payload = (await req.json()) as AnalyticsPlatformActivityRequest;
+      } catch {
+        payload = {};
+      }
+    } else {
+      const url = new URL(req.url);
+      const maxAgeSeconds = url.searchParams.get("max_age_seconds");
+      const limit = url.searchParams.get("limit");
+      payload = {
+        workspace_id: url.searchParams.get("workspace_id") ?? undefined,
+        platforms: url.searchParams.get("platforms")?.split(",") ?? undefined,
+        date_from: url.searchParams.get("date_from") ?? undefined,
+        date_to: url.searchParams.get("date_to") ?? undefined,
+        max_age_seconds: maxAgeSeconds ? Number(maxAgeSeconds) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        force: url.searchParams.get("force") === "true",
+      };
+    }
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "No authorization header" }), {
@@ -128,74 +234,199 @@ Deno.serve(async (req) => {
     }
     const user = { id: claimsData.claims.sub as string };
 
-    console.log(`Fetching platform activity for user: ${user.id}`);
-
-    // Use service role client for decryption operations
+    // Use service role client for decryption + snapshot persistence
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get all active platform integrations
-    const { data: integrations, error: intError } = await supabase
+    const effectiveWorkspaceId = payload.workspace_id ?? user.id;
+    const requestedPlatforms = normalizePlatforms(payload.platforms);
+    const now = Date.now();
+    const maxAgeSeconds = typeof payload.max_age_seconds === "number" ? payload.max_age_seconds : 3600;
+    const force = Boolean(payload.force);
+    const limit = typeof payload.limit === "number" ? payload.limit : 100;
+
+    const fallbackFrom = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    const dateFrom = toIsoOrDefault(payload.date_from, fallbackFrom);
+    const dateTo = toIsoOrDefault(payload.date_to, new Date(now));
+
+    // -----------------------------
+    // Cache: analytics snapshots
+    // -----------------------------
+    let snapshotQuery = supabase
+      .from("analytics_platform_activity_snapshots")
+      .select(
+        "platform, account_id, platform_content_id, account_name, content, media_url, permalink, published_at, engagement_likes, engagement_comments, engagement_shares, engagement_views, fetched_at",
+      )
+      .eq("workspace_id", effectiveWorkspaceId)
+      .gte("published_at", dateFrom.toISOString())
+      .lte("published_at", dateTo.toISOString())
+      .order("fetched_at", { ascending: false })
+      .limit(limit);
+
+    if (requestedPlatforms?.length) {
+      snapshotQuery = snapshotQuery.in("platform", requestedPlatforms);
+    }
+
+    const { data: cachedSnapshots, error: cacheError } = await snapshotQuery;
+
+    if (!force && !cacheError && cachedSnapshots?.length) {
+      const newestFetchedAtMs = cachedSnapshots.reduce((max: number, row: any) => {
+        const ms = new Date(row.fetched_at).getTime();
+        return ms > max ? ms : max;
+      }, 0);
+
+      const isCacheFresh = newestFetchedAtMs >= now - maxAgeSeconds * 1000;
+
+      if (isCacheFresh) {
+        const cachedActivities = (cachedSnapshots || []).map(snapshotRowToActivity);
+        const sortedActivities = cachedActivities
+          .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+          .slice(0, limit);
+
+        return new Response(
+          JSON.stringify({
+            activities: sortedActivities,
+            meta: {
+              cached: true,
+              latestSnapshotFetchedAt: newestFetchedAtMs
+                ? new Date(newestFetchedAtMs).toISOString()
+                : undefined,
+              returnedCount: sortedActivities.length,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    // -----------------------------
+    // Live: fetch integrations
+    // -----------------------------
+    // For workspace analytics, include all workspace members.
+    let memberUserIds = [user.id];
+    if (payload.workspace_id) {
+      // Ensure the requester is a member of the workspace.
+      const { data: memberCheck, error: memberCheckError } = await supabase
+        .from("workspace_members")
+        .select("user_id")
+        .eq("workspace_id", effectiveWorkspaceId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (memberCheckError) throw memberCheckError;
+      if (!memberCheck) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: memberRows, error: memberRowsError } = await supabase
+        .from("workspace_members")
+        .select("user_id")
+        .eq("workspace_id", effectiveWorkspaceId);
+
+      if (memberRowsError) throw memberRowsError;
+      memberUserIds = (memberRows || []).map((r: any) => String(r.user_id));
+      if (!memberUserIds.length) memberUserIds = [user.id];
+    }
+
+    let integrationsQuery = supabase
       .from("platform_integrations")
-      .select("platform_name, credentials, credentials_encrypted")
-      .eq("user_id", user.id)
+      .select("platform_name, credentials, credentials_encrypted, user_id")
+      .in("user_id", memberUserIds)
       .eq("status", "active");
+
+    if (requestedPlatforms?.length) {
+      integrationsQuery = integrationsQuery.in("platform_name", requestedPlatforms);
+    }
+
+    const { data: integrations, error: intError } = await integrationsQuery;
 
     if (intError) {
       console.error("Failed to fetch integrations:", intError);
       throw intError;
     }
 
-    console.log(`Found ${integrations?.length || 0} active integrations`);
-
-    const allActivities: PlatformActivityItem[] = [];
+    const sourceActivities: Array<PlatformActivityItem & { _sourceUserId: string }> = [];
 
     // Process each platform in parallel
     const activityPromises = (integrations || []).map(async (integration) => {
-      const platform = integration.platform_name.toLowerCase();
-      
+      const platform = String(integration.platform_name).toLowerCase();
+      const sourceUserId = String(integration.user_id);
+
       // Decrypt credentials using AES-GCM with pgcrypto fallback
       const credentials = await safeDecryptCredentials(integration.credentials, supabase);
-
-      console.log(`Processing ${platform} integration`);
 
       try {
         switch (platform) {
           case "linkedin":
-            return await fetchLinkedInActivity(credentials);
+            return (await fetchLinkedInActivity(credentials)).map((a) => ({ ...a, _sourceUserId: sourceUserId }));
           case "facebook":
-            return await fetchFacebookActivity(credentials);
+            return (await fetchFacebookActivity(credentials)).map((a) => ({ ...a, _sourceUserId: sourceUserId }));
           case "instagram":
-            return await fetchInstagramActivity(credentials);
+            return (await fetchInstagramActivity(credentials)).map((a) => ({ ...a, _sourceUserId: sourceUserId }));
           case "youtube":
-            return await fetchYouTubeActivity(credentials);
+            return (await fetchYouTubeActivity(credentials)).map((a) => ({ ...a, _sourceUserId: sourceUserId }));
           case "twitter":
-            return await fetchTwitterActivity(credentials);
+            return (await fetchTwitterActivity(credentials)).map((a) => ({ ...a, _sourceUserId: sourceUserId }));
           default:
-            return [];
+            return [] as Array<PlatformActivityItem & { _sourceUserId: string }>;
         }
       } catch (error) {
         console.error(`Failed to fetch ${platform} activity:`, error);
-        return [];
+        return [] as Array<PlatformActivityItem & { _sourceUserId: string }>;
       }
     });
 
     const results = await Promise.allSettled(activityPromises);
     results.forEach((result) => {
       if (result.status === "fulfilled") {
-        allActivities.push(...result.value);
+        sourceActivities.push(...(result.value || []));
       }
     });
 
-    // Sort by publishedAt descending and limit to 10
-    const sortedActivities = allActivities
-      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
-      .slice(0, 10);
-
-    console.log(`Returning ${sortedActivities.length} activity items`);
-
-    return new Response(JSON.stringify({ activities: sortedActivities }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Apply requested date window.
+    const liveActivities = sourceActivities.filter((a) => {
+      const ms = new Date(a.publishedAt).getTime();
+      return ms >= dateFrom.getTime() && ms <= dateTo.getTime();
     });
+
+    // Store snapshots (per content item + platform)
+    const rowsToUpsert = liveActivities.map((a) =>
+      activityToSnapshotRow(effectiveWorkspaceId, a._sourceUserId, a),
+    );
+
+    if (rowsToUpsert.length) {
+      const { error: upsertError } = await supabase
+        .from("analytics_platform_activity_snapshots")
+        .upsert(rowsToUpsert, {
+          onConflict: "workspace_id,user_id,platform,account_id,platform_content_id",
+        });
+
+      if (upsertError) {
+        console.error("Failed to upsert analytics snapshots:", upsertError);
+      }
+    }
+
+    const sortedActivities = liveActivities
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+      .slice(0, limit)
+      .map((a) => {
+        const { _sourceUserId: _ignored, ...rest } = a;
+        return rest;
+      });
+
+    return new Response(
+      JSON.stringify({
+        activities: sortedActivities,
+        meta: {
+          cached: false,
+          latestSnapshotFetchedAt: new Date(now).toISOString(),
+          returnedCount: sortedActivities.length,
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error) {
     console.error("Error in get-platform-activity:", error);
     const message = error instanceof Error ? error.message : "Unknown error";

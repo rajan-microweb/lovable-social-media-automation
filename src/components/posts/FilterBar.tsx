@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, X, CalendarDays } from "lucide-react";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { SOCIAL_STATUS_DRAFT, SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
+import { SOCIAL_STATUS_DRAFT, SOCIAL_STATUS_FAILED, SOCIAL_STATUS_PENDING_APPROVAL, SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
 
 interface FilterBarProps {
   searchTerm: string;
@@ -35,7 +35,9 @@ const STATUS_OPTIONS = [
   { value: "all", label: "All Status" },
   { value: SOCIAL_STATUS_DRAFT, label: "Draft" },
   { value: SOCIAL_STATUS_SCHEDULED, label: "Scheduled" },
+  { value: SOCIAL_STATUS_PENDING_APPROVAL, label: "Pending Approval" },
   { value: SOCIAL_STATUS_PUBLISHED, label: "Published" },
+  { value: SOCIAL_STATUS_FAILED, label: "Failed" },
 ];
 
 const DEFAULT_PLATFORMS = ["LinkedIn", "Instagram", "Twitter", "YouTube"];

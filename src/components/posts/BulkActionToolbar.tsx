@@ -27,7 +27,7 @@ import { Trash2, Clock, X, CheckSquare } from "lucide-react";
 import { useState } from "react";
 import { format, setHours, setMinutes } from "date-fns";
 import { Input } from "@/components/ui/input";
-import { SOCIAL_STATUS_DRAFT, SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
+import { SOCIAL_STATUS_DRAFT, SOCIAL_STATUS_FAILED, SOCIAL_STATUS_PENDING_APPROVAL, SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
 
 interface BulkActionToolbarProps {
   selectedCount: number;
@@ -124,7 +124,9 @@ export function BulkActionToolbar({
         <SelectContent>
           <SelectItem value={SOCIAL_STATUS_DRAFT}>Set to Draft</SelectItem>
           <SelectItem value={SOCIAL_STATUS_SCHEDULED}>Set to Scheduled</SelectItem>
+          <SelectItem value={SOCIAL_STATUS_PENDING_APPROVAL}>Set to Pending Approval</SelectItem>
           <SelectItem value={SOCIAL_STATUS_PUBLISHED}>Set to Published</SelectItem>
+          <SelectItem value={SOCIAL_STATUS_FAILED}>Set to Failed</SelectItem>
         </SelectContent>
       </Select>
 

@@ -31,8 +31,8 @@ const PLATFORM_MAP: Record<string, string[]> = {
   onlyText: ["Facebook", "LinkedIn"],
   image: ["Facebook", "Instagram", "LinkedIn"],
   carousel: ["Facebook", "Instagram", "LinkedIn"],
-  video: ["Facebook", "Instagram", "LinkedIn"],
-  shorts: ["Facebook", "Instagram"],
+  video: ["Facebook", "Instagram", "LinkedIn", "YouTube"],
+  shorts: ["Facebook", "Instagram", "YouTube"],
   article: ["LinkedIn"],
   pdf: ["LinkedIn"],
 };
@@ -50,14 +50,23 @@ const postSchema = z.object({
   pdf: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
   metadata: metadataSchema,
-  status: z.enum(["draft", "scheduled", "published"]),
+  status: z.enum(["draft", "scheduled", "pending_approval", "published", "failed"]),
   scheduled_at: z.string().optional(),
+  recurrence_frequency: z.enum(["none", "weekly", "monthly"]).optional(),
+  recurrence_until: z.string().optional().nullable(),
 });
 
 export default function CreatePost() {
-  const { user } = useAuth();
+  const { user, workspaceId } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const approvalsEnabled = import.meta.env.VITE_ENABLE_APPROVALS === "true";
+
+  // Content templates (Publer-like quick apply)
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [pendingTemplate, setPendingTemplate] = useState<any | null>(null);
 
   // Form state
   const [typeOfPost, setTypeOfPost] = useState("");
@@ -85,6 +94,8 @@ export default function CreatePost() {
   const [facebookTags, setFacebookTags] = useState("");
   const [status, setStatus] = useState("draft");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<"none" | "weekly" | "monthly">("none");
+  const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [uploading, setUploading] = useState(false);
   const [articleThumbnailFile, setArticleThumbnailFile] = useState<File | null>(null);
   const [articleThumbnailUrl, setArticleThumbnailUrl] = useState("");
@@ -139,6 +150,34 @@ export default function CreatePost() {
     fetchConnectedPlatforms();
   }, [user]);
 
+  // Load global + workspace templates for posts.
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      if (!user || !workspaceId) return;
+      setTemplatesLoading(true);
+      try {
+        const { data, error } = await (supabase as any)
+          .from("content_templates" as any)
+          .select("*")
+          .eq("kind", "post")
+          // workspace_id IS NULL (global templates) OR workspace-specific
+          .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setTemplates(data || []);
+      } catch (e: any) {
+        console.error(e);
+        toast.error(e?.message || "Failed to load content templates");
+        setTemplates([]);
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
+
+    fetchTemplates();
+  }, [user, workspaceId]);
+
   // Reset form when type changes
   useEffect(() => {
     if (typeOfPost) {
@@ -161,6 +200,74 @@ export default function CreatePost() {
       setPlatforms([]);
     }
   }, [typeOfPost]);
+
+  // Apply a selected template once `typeOfPost` is set.
+  useEffect(() => {
+    if (!pendingTemplate) return;
+    if (!pendingTemplate.type_of_post) return;
+    if (typeOfPost !== pendingTemplate.type_of_post) return;
+
+    const overrides = pendingTemplate.overrides || {};
+
+    setPlatforms(
+      Array.isArray(overrides.platforms)
+        ? overrides.platforms.map((p: any) => String(p).toLowerCase())
+        : []
+    );
+    setSelectedAccountIds([]);
+
+    setPostTitle(overrides.postTitle ?? "");
+    setPostDescription(overrides.postDescription ?? "");
+    setTextContent(overrides.textContent ?? "");
+
+    setYoutubeTitle(overrides.youtubeTitle ?? "");
+    setYoutubeDescription(overrides.youtubeDescription ?? "");
+    setInstagramTags(overrides.instagramTags ?? "");
+    setFacebookTags(overrides.facebookTags ?? "");
+
+    setImageUrl(overrides.imageUrl ?? "");
+    setVideoUrl(overrides.videoUrl ?? "");
+    setPdfUrl(overrides.pdfUrl ?? "");
+
+    const nextCarouselImages = Array.isArray(overrides.carouselImages)
+      ? overrides.carouselImages.map((u: any) => String(u))
+      : Array.isArray(overrides.carousel_images)
+        ? overrides.carousel_images.map((u: any) => String(u))
+        : [];
+
+    if (pendingTemplate.type_of_post === "carousel") {
+      setCarouselImages(nextCarouselImages);
+    } else {
+      setCarouselImages([]);
+    }
+
+    setMediaFile(null);
+    setSelectedCarouselImageIndex(null);
+
+    // Optional article fields (templates may include these even if not used).
+    setArticleTitle(overrides.articleTitle ?? "");
+    setArticleDescription(overrides.articleDescription ?? "");
+    setArticleUrl(overrides.articleUrl ?? "");
+    setArticleThumbnailUrl(overrides.articleThumbnailUrl ?? "");
+    setArticleThumbnailFile(null);
+
+    setPendingTemplate(null);
+  }, [pendingTemplate, typeOfPost]);
+
+  const handleTemplateSelection = (templateId: string) => {
+    if (templateId === "none") {
+      setSelectedTemplateId("");
+      setPendingTemplate(null);
+      return;
+    }
+
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+
+    setSelectedTemplateId(templateId);
+    setPendingTemplate(tpl);
+    setTypeOfPost(tpl.type_of_post || "");
+  };
 
   // Reset selected accounts when platforms change (but only when accounts have loaded)
   useEffect(() => {
@@ -308,6 +415,11 @@ export default function CreatePost() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    if (!user || !workspaceId) {
+      toast.error("Workspace not ready. Please try again.");
+      return;
+    }
+
     // Check if any platform is connected
     if (connectedPlatforms.length === 0) {
       setAlertMessage("Please connect at least one social media account before creating a post.");
@@ -397,6 +509,8 @@ export default function CreatePost() {
         tagsArray.push(`facebook_tags:${facebookTags}`);
       }
 
+      const finalStatus = approvalsEnabled && status === "scheduled" ? "pending_approval" : status;
+
       const data = {
         type_of_post: typeOfPost,
         platforms: platforms,
@@ -412,14 +526,17 @@ export default function CreatePost() {
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
         tags: tagsArray,
         metadata: metadataObject, // Use the new object structure here
-        status: status,
+        status: finalStatus,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        recurrence_frequency: recurrenceFrequency,
+        recurrence_until: recurrenceUntil ? new Date(recurrenceUntil).toISOString() : null,
       };
 
       postSchema.parse(data);
 
       const { error } = await supabase.from("posts").insert({
         user_id: user!.id,
+        workspace_id: workspaceId,
         type_of_post: data.type_of_post,
         platforms: data.platforms,
         account_type: data.account_type ?? null,
@@ -434,6 +551,8 @@ export default function CreatePost() {
         metadata: Object.keys(data.metadata).length > 0 ? data.metadata : null,
         status: data.status,
         scheduled_at: data.scheduled_at ?? null,
+        recurrence_frequency: data.recurrence_frequency ?? "none",
+        recurrence_until: data.recurrence_until ?? null,
       });
 
       if (error) throw error;
@@ -650,6 +769,37 @@ export default function CreatePost() {
             <CardContent className="pt-6 space-y-6">
               {/* Post Details Header */}
               <h2 className="text-xl font-semibold">Post Details</h2>
+
+              {/* Content Template */}
+              <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Content Template</Label>
+                </div>
+
+                <Select value={selectedTemplateId || "none"} onValueChange={handleTemplateSelection}>
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        templatesLoading ? "Loading templates..." : templates.length ? "Select a template (optional)" : "No templates available"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No template</SelectItem>
+                    {templates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.template_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {pendingTemplate && (
+                  <p className="text-xs text-muted-foreground">
+                    Applying template...
+                  </p>
+                )}
+              </div>
 
               {/* Post Title */}
               <div>
@@ -1212,32 +1362,64 @@ export default function CreatePost() {
 
                   {/* Status and Schedule - side by side */}
                   {showSchedule && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>
-                          Status <span className="text-destructive">*</span>
-                        </Label>
-                        <Select value={status} onValueChange={setStatus}>
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="draft">Draft</SelectItem>
-                            <SelectItem value="scheduled">Scheduled</SelectItem>
-                          </SelectContent>
-                        </Select>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>
+                            Status <span className="text-destructive">*</span>
+                          </Label>
+                          <Select value={status} onValueChange={setStatus}>
+                            <SelectTrigger className="mt-1">
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="draft">Draft</SelectItem>
+                              <SelectItem value="scheduled">Scheduled</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="scheduledAt">
+                            Schedule Date & Time <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id="scheduledAt"
+                            type="datetime-local"
+                            value={scheduledAt}
+                            onChange={(e) => setScheduledAt(e.target.value)}
+                            className="mt-1"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <Label htmlFor="scheduledAt">
-                          Schedule Date & Time <span className="text-destructive">*</span>
-                        </Label>
-                        <Input
-                          id="scheduledAt"
-                          type="datetime-local"
-                          value={scheduledAt}
-                          onChange={(e) => setScheduledAt(e.target.value)}
-                          className="mt-1"
-                        />
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Recurrence</Label>
+                          <Select
+                            value={recurrenceFrequency}
+                            onValueChange={(v) => setRecurrenceFrequency(v as "none" | "weekly" | "monthly")}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue placeholder="Select recurrence" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="weekly">Weekly</SelectItem>
+                              <SelectItem value="monthly">Monthly</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="recurrenceUntil">Recurrence Until</Label>
+                          <Input
+                            id="recurrenceUntil"
+                            type="datetime-local"
+                            value={recurrenceUntil}
+                            onChange={(e) => setRecurrenceUntil(e.target.value)}
+                            className="mt-1"
+                            disabled={recurrenceFrequency === "none"}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}

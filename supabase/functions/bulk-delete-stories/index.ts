@@ -37,7 +37,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { story_ids } = await req.json();
+    const { story_ids, workspace_id } = await req.json();
+
+    if (!workspace_id) {
+      return new Response(
+        JSON.stringify({ error: "workspace_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!Array.isArray(story_ids) || story_ids.length === 0) {
       return new Response(
@@ -55,10 +62,33 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch stories to verify ownership and get media URLs
+    // Verify caller is a member of the workspace
+    const { data: membership, error: membershipError } = await supabase
+      .from("workspace_members")
+      .select("user_id")
+      .eq("workspace_id", workspace_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error("Error checking workspace membership:", membershipError);
+      return new Response(
+        JSON.stringify({ error: "Failed to verify workspace membership" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - Not a workspace member" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fetch stories to verify workspace membership and get media URLs
     const { data: stories, error: fetchError } = await supabase
       .from("stories")
-      .select("id, user_id, image, video")
+      .select("id, workspace_id, image, video")
       .in("id", story_ids);
 
     if (fetchError) {
@@ -69,11 +99,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check all stories belong to the user
-    const unauthorized = stories?.filter((s) => s.user_id !== user.id) || [];
+    // Check all stories belong to the workspace
+    const unauthorized = stories?.filter((s) => s.workspace_id !== workspace_id) || [];
     if (unauthorized.length > 0 || stories?.length !== story_ids.length) {
       return new Response(
-        JSON.stringify({ error: "You can only delete your own stories" }),
+        JSON.stringify({ error: "You can only delete stories from the active workspace" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -103,7 +133,8 @@ Deno.serve(async (req) => {
     const { error: deleteError } = await supabase
       .from("stories")
       .delete()
-      .in("id", story_ids);
+      .in("id", story_ids)
+      .eq("workspace_id", workspace_id);
 
     if (deleteError) {
       console.error("Error deleting stories:", deleteError);
@@ -113,7 +144,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Bulk deleted ${story_ids.length} stories for user ${user.id}`);
+    console.log(`Bulk deleted ${story_ids.length} stories for user ${user.id} in workspace ${workspace_id}`);
 
     return new Response(
       JSON.stringify({ success: true, deleted: story_ids.length }),
