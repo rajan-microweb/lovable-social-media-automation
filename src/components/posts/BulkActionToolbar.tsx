@@ -27,6 +27,7 @@ import { Trash2, Clock, X, CheckSquare } from "lucide-react";
 import { useState } from "react";
 import { format, setHours, setMinutes } from "date-fns";
 import { Input } from "@/components/ui/input";
+import { SOCIAL_STATUS_DRAFT, SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
 
 interface BulkActionToolbarProps {
   selectedCount: number;
@@ -65,7 +66,7 @@ export function BulkActionToolbar({
   };
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-primary/10 rounded-lg border border-primary/20">
+    <div className="flex flex-col sm:flex-row sm:items-center items-stretch gap-3 p-3 bg-primary/10 rounded-lg border border-primary/20">
       {/* Selection Info */}
       <div className="flex items-center gap-2">
         <CheckSquare className="h-4 w-4 text-primary" />
@@ -121,9 +122,9 @@ export function BulkActionToolbar({
           <SelectValue placeholder="Change Status" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="draft">Set to Draft</SelectItem>
-          <SelectItem value="scheduled">Set to Scheduled</SelectItem>
-          <SelectItem value="published">Set to Published</SelectItem>
+          <SelectItem value={SOCIAL_STATUS_DRAFT}>Set to Draft</SelectItem>
+          <SelectItem value={SOCIAL_STATUS_SCHEDULED}>Set to Scheduled</SelectItem>
+          <SelectItem value={SOCIAL_STATUS_PUBLISHED}>Set to Published</SelectItem>
         </SelectContent>
       </Select>
 
@@ -173,6 +174,7 @@ export function BulkActionToolbar({
         size="icon"
         className="ml-auto"
         onClick={onClearSelection}
+        aria-label="Clear selection"
       >
         <X className="h-4 w-4" />
       </Button>

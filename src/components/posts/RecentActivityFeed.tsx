@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, BookOpen, Linkedin, Facebook, Instagram, Youtube, Twitter } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
 
 export interface ActivityItem {
   id: string;
@@ -29,9 +30,9 @@ const platformIcons: Record<string, React.ElementType> = {
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "published":
+    case SOCIAL_STATUS_PUBLISHED:
       return "bg-chart-3";
-    case "scheduled":
+    case SOCIAL_STATUS_SCHEDULED:
       return "bg-accent";
     default:
       return "bg-muted";

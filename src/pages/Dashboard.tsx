@@ -16,6 +16,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
 
 interface Stats {
   totalPosts: number;
@@ -61,11 +62,11 @@ export default function Dashboard() {
 
       setStats({
         totalPosts: posts.length,
-        scheduledPosts: posts.filter((p) => p.status === "scheduled").length,
-        publishedPosts: posts.filter((p) => p.status === "published").length,
+        scheduledPosts: posts.filter((p) => p.status === SOCIAL_STATUS_SCHEDULED).length,
+        publishedPosts: posts.filter((p) => p.status === SOCIAL_STATUS_PUBLISHED).length,
         totalStories: stories.length,
-        scheduledStories: stories.filter((s) => s.status === "scheduled").length,
-        publishedStories: stories.filter((s) => s.status === "published").length,
+        scheduledStories: stories.filter((s) => s.status === SOCIAL_STATUS_SCHEDULED).length,
+        publishedStories: stories.filter((s) => s.status === SOCIAL_STATUS_PUBLISHED).length,
       });
     };
 

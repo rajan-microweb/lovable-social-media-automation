@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, X, CalendarDays } from "lucide-react";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
+import { SOCIAL_STATUS_DRAFT, SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
 
 interface FilterBarProps {
   searchTerm: string;
@@ -32,9 +33,9 @@ interface FilterBarProps {
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Status" },
-  { value: "draft", label: "Draft" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "published", label: "Published" },
+  { value: SOCIAL_STATUS_DRAFT, label: "Draft" },
+  { value: SOCIAL_STATUS_SCHEDULED, label: "Scheduled" },
+  { value: SOCIAL_STATUS_PUBLISHED, label: "Published" },
 ];
 
 const DEFAULT_PLATFORMS = ["LinkedIn", "Instagram", "Twitter", "YouTube"];

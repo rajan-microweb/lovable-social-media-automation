@@ -8,6 +8,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Edit,
   Trash2,
   Calendar,
@@ -30,23 +41,16 @@ import {
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
-export interface CalendarEventDetail {
-  id: string;
-  title: string;
-  description?: string | null;
-  text?: string | null;
-  scheduled_at: string;
-  type: "post" | "story";
-  status: string;
-  platforms?: string[];
-  type_of_post?: string;
-  type_of_story?: string;
-  image?: string | null;
-  video?: string | null;
-  pdf?: string | null;
-  account_type?: string | null;
-  tags?: string[] | null;
-}
+import type { CalendarEventDetail } from "@/types/calendar";
+import {
+  normalizeSocialPlatform,
+  SOCIAL_STATUS_DRAFT,
+  SOCIAL_STATUS_FAILED,
+  SOCIAL_STATUS_PUBLISHED,
+  SOCIAL_STATUS_SCHEDULED,
+  type SocialPlatform,
+  type SocialStatus,
+} from "@/types/social";
 
 interface EventDetailModalProps {
   event: CalendarEventDetail | null;
@@ -55,7 +59,7 @@ interface EventDetailModalProps {
   onDelete?: (id: string, type: "post" | "story") => void;
 }
 
-const platformConfig: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
+const platformConfig: Record<SocialPlatform, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
   linkedin: { icon: Linkedin, color: "text-[hsl(210,90%,40%)]", bgColor: "bg-[hsl(210,90%,40%)]/10", label: "LinkedIn" },
   facebook: { icon: Facebook, color: "text-[hsl(220,80%,52%)]", bgColor: "bg-[hsl(220,80%,52%)]/10", label: "Facebook" },
   instagram: { icon: Instagram, color: "text-[hsl(340,82%,52%)]", bgColor: "bg-[hsl(340,82%,52%)]/10", label: "Instagram" },
@@ -63,11 +67,11 @@ const platformConfig: Record<string, { icon: React.ElementType; color: string; b
   twitter: { icon: Twitter, color: "text-[hsl(203,89%,53%)]", bgColor: "bg-[hsl(203,89%,53%)]/10", label: "Twitter / X" },
 };
 
-const statusConfig: Record<string, { className: string; label: string }> = {
-  published: { className: "bg-chart-3/15 text-chart-3 border-chart-3/30", label: "Published" },
-  scheduled: { className: "bg-primary/15 text-primary border-primary/30", label: "Scheduled" },
-  draft: { className: "bg-chart-4/15 text-chart-4 border-chart-4/30", label: "Draft" },
-  failed: { className: "bg-destructive/15 text-destructive border-destructive/30", label: "Failed" },
+const statusConfig: Record<SocialStatus, { className: string; label: string }> = {
+  [SOCIAL_STATUS_PUBLISHED]: { className: "bg-chart-3/15 text-chart-3 border-chart-3/30", label: "Published" },
+  [SOCIAL_STATUS_SCHEDULED]: { className: "bg-primary/15 text-primary border-primary/30", label: "Scheduled" },
+  [SOCIAL_STATUS_DRAFT]: { className: "bg-chart-4/15 text-chart-4 border-chart-4/30", label: "Draft" },
+  [SOCIAL_STATUS_FAILED]: { className: "bg-destructive/15 text-destructive border-destructive/30", label: "Failed" },
 };
 
 function getTypeConfig(type: string | null) {
@@ -88,7 +92,7 @@ export function EventDetailModal({ event, open, onOpenChange, onDelete }: EventD
 
   const typeConfig = getTypeConfig(event.type === "post" ? event.type_of_post : event.type_of_story);
   const TypeIcon = typeConfig.icon;
-  const status = statusConfig[event.status] || statusConfig.draft;
+  const status = statusConfig[event.status] || statusConfig[SOCIAL_STATUS_DRAFT];
   const isPost = event.type === "post";
   const hasMedia = event.image || event.video || event.pdf;
 
@@ -208,7 +212,9 @@ export function EventDetailModal({ event, open, onOpenChange, onDelete }: EventD
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Platforms</span>
               <div className="flex flex-wrap gap-2">
                 {event.platforms.map((platform) => {
-                  const config = platformConfig[platform.toLowerCase()];
+                  const platformKey = normalizeSocialPlatform(platform);
+                  if (!platformKey) return null;
+                  const config = platformConfig[platformKey];
                   if (!config) return null;
                   const PlatformIcon = config.icon;
                   return (
@@ -241,10 +247,30 @@ export function EventDetailModal({ event, open, onOpenChange, onDelete }: EventD
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
-            <Button variant="outline" size="sm" onClick={handleDelete} className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30">
-              <Trash2 className="h-4 w-4 mr-1.5" />
-              Delete
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {event.type}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. The selected item will be permanently deleted.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button size="sm" onClick={handleEdit}>
               <Edit className="h-4 w-4 mr-1.5" />
               Edit {isPost ? "Post" : "Story"}

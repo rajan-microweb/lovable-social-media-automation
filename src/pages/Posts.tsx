@@ -1,40 +1,20 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent } from "@/components/ui/card";
 import { Plus } from "lucide-react";
 import { PostCard } from "@/components/posts/PostCard";
-import { toast } from "sonner";
-import { format } from "date-fns";
+import { toast } from "@/hooks/use-toast";
 import { DateRange } from "react-day-picker";
 import { FilterBar } from "@/components/posts/FilterBar";
 import { BulkActionToolbar } from "@/components/posts/BulkActionToolbar";
 import { SortDropdown, SortField, SortOrder } from "@/components/posts/SortDropdown";
-import { PlatformActivityFeed } from "@/components/posts/PlatformActivityFeed";
-import { usePlatformActivity } from "@/hooks/usePlatformActivity";
-
-interface Post {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-  scheduled_at: string | null;
-  type_of_post: string | null;
-  platforms: string[] | null;
-  account_type: string | null;
-  text: string | null;
-  image: string | null;
-  video: string | null;
-  pdf: string | null;
-  url: string | null;
-  tags: string[] | null;
-  created_at: string;
-}
+import type { Post } from "@/types/post";
+import { SOCIAL_STATUS_SCHEDULED, type SocialStatus } from "@/types/social";
+import { bulkDeletePosts, bulkUpdatePosts, deletePostForUser, fetchPostsForUser } from "@/lib/api/posts";
+import { applyPostFiltersAndSorting } from "@/lib/posts/applyPostFiltersAndSorting";
 
 export default function Posts() {
   const { user } = useAuth();
@@ -42,9 +22,7 @@ export default function Posts() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [bulkLoading, setBulkLoading] = useState(false);
-
-  // Platform activity hook
-  const { activities: platformActivities, loading: platformActivityLoading, refresh: refreshPlatformActivity } = usePlatformActivity(user?.id);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -59,117 +37,61 @@ export default function Posts() {
   const [sortBy, setSortBy] = useState<SortField>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
+  const clearFilters = () => {
+    setSearchTerm("");
+    setStatusFilter(null);
+    setPlatformFilter([]);
+    setDateRange(undefined);
+  };
+
+  const showToastSuccess = (title: string, description?: string) => {
+    toast({ title, description });
+  };
+
+  const showToastError = (title: string, description?: string) => {
+    toast({ title, description, variant: "destructive" });
+  };
+
   useEffect(() => {
     if (!user) return;
     fetchPosts();
   }, [user]);
 
   const fetchPosts = async () => {
-    const { data, error } = await supabase
-      .from("posts")
-      .select("*")
-      .eq("user_id", user!.id)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      toast.error("Failed to load posts");
-    } else {
-      setPosts(data || []);
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const data = await fetchPostsForUser(user!.id);
+      setPosts(data);
+    } catch {
+      setFetchError("Failed to load posts. Please try again.");
     }
-    setLoading(false);
+    finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("posts")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", user!.id);
-
-      if (error) {
-        toast.error("Failed to delete post");
-      } else {
-        toast.success("Post deleted");
-        fetchPosts();
-      }
+      await deletePostForUser(user!.id, id);
+      showToastSuccess("Post deleted");
+      fetchPosts();
     } catch (error) {
-      toast.error("Failed to delete post");
+      showToastError("Failed to delete post");
       console.error('Error deleting post:', error);
     }
   };
 
   // Filtered and sorted posts
   const filteredPosts = useMemo(() => {
-    let result = [...posts];
-
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(
-        (p) =>
-          p.title?.toLowerCase().includes(term) ||
-          p.text?.toLowerCase().includes(term) ||
-          p.description?.toLowerCase().includes(term)
-      );
-    }
-
-    // Status filter
-    if (statusFilter) {
-      result = result.filter((p) => p.status === statusFilter);
-    }
-
-    // Platform filter
-    if (platformFilter.length > 0) {
-      result = result.filter((p) =>
-        p.platforms?.some((platform) => platformFilter.includes(platform))
-      );
-    }
-
-    // Date range filter
-    if (dateRange?.from) {
-      result = result.filter((p) => {
-        const postDate = new Date(p.created_at);
-        if (dateRange.to) {
-          return postDate >= dateRange.from! && postDate <= dateRange.to;
-        }
-        return postDate >= dateRange.from!;
-      });
-    }
-
-    // Sorting
-    result.sort((a, b) => {
-      let aVal: string | null = null;
-      let bVal: string | null = null;
-
-      switch (sortBy) {
-        case "created_at":
-          aVal = a.created_at;
-          bVal = b.created_at;
-          break;
-        case "scheduled_at":
-          aVal = a.scheduled_at;
-          bVal = b.scheduled_at;
-          break;
-        case "status":
-          aVal = a.status;
-          bVal = b.status;
-          break;
-        case "title":
-          aVal = a.title;
-          bVal = b.title;
-          break;
-      }
-
-      if (!aVal && !bVal) return 0;
-      if (!aVal) return sortOrder === "asc" ? 1 : -1;
-      if (!bVal) return sortOrder === "asc" ? -1 : 1;
-
-      const comparison = aVal.localeCompare(bVal);
-      return sortOrder === "asc" ? comparison : -comparison;
+    return applyPostFiltersAndSorting(posts, {
+      searchTerm,
+      statusFilter,
+      platformFilter,
+      dateRange,
+      sortBy,
+      sortOrder,
     });
-
-    return result;
   }, [posts, searchTerm, statusFilter, platformFilter, dateRange, sortBy, sortOrder]);
 
   // Selection handlers
@@ -184,27 +106,58 @@ export default function Posts() {
   };
 
   const selectAll = () => {
-    setSelectedIds(new Set(filteredPosts.map((p) => p.id)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      filteredPosts.forEach((post) => next.add(post.id));
+      return next;
+    });
   };
 
   const clearSelection = () => {
     setSelectedIds(new Set());
   };
 
+  const filteredPostIdSet = useMemo(
+    () => new Set(filteredPosts.map((p) => p.id)),
+    [filteredPosts]
+  );
+
+  const visibleSelectedIds = useMemo(
+    () => Array.from(selectedIds).filter((id) => filteredPostIdSet.has(id)),
+    [selectedIds, filteredPostIdSet]
+  );
+
+  const hiddenSelectedCount = selectedIds.size - visibleSelectedIds.length;
+
   // Bulk actions
   const handleBulkDelete = async () => {
+    const targetIds = visibleSelectedIds;
+    if (targetIds.length === 0) {
+      showToastError("No visible selected posts to delete");
+      return;
+    }
+
+    if (hiddenSelectedCount > 0) {
+      toast({ title: "Some selections were skipped", description: `${hiddenSelectedCount} hidden selection(s) were skipped` });
+    }
+
+    const previousPosts = posts;
+    const previousSelected = new Set(selectedIds);
+    setPosts((current) => current.filter((post) => !targetIds.includes(post.id)));
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      targetIds.forEach((id) => next.delete(id));
+      return next;
+    });
+
     setBulkLoading(true);
     try {
-      const { error } = await supabase.functions.invoke("bulk-delete-posts", {
-        body: { post_ids: Array.from(selectedIds) },
-      });
-
-      if (error) throw error;
-      toast.success(`Deleted ${selectedIds.size} posts`);
-      clearSelection();
-      fetchPosts();
+      await bulkDeletePosts(targetIds);
+      showToastSuccess(`Deleted ${targetIds.length} posts`);
     } catch (error) {
-      toast.error("Failed to delete posts");
+      setPosts(previousPosts);
+      setSelectedIds(previousSelected);
+      showToastError("Failed to delete posts");
       console.error(error);
     } finally {
       setBulkLoading(false);
@@ -212,18 +165,37 @@ export default function Posts() {
   };
 
   const handleBulkStatusChange = async (status: string) => {
+    const targetIds = visibleSelectedIds;
+    if (targetIds.length === 0) {
+      showToastError("No visible selected posts to update");
+      return;
+    }
+
+    if (hiddenSelectedCount > 0) {
+      toast({ title: "Some selections were skipped", description: `${hiddenSelectedCount} hidden selection(s) were skipped` });
+    }
+
+    const previousPosts = posts;
+    const previousSelected = new Set(selectedIds);
+    setPosts((current) =>
+      current.map((post) =>
+        targetIds.includes(post.id) ? { ...post, status } : post
+      )
+    );
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      targetIds.forEach((id) => next.delete(id));
+      return next;
+    });
+
     setBulkLoading(true);
     try {
-      const { error } = await supabase.functions.invoke("bulk-update-posts", {
-        body: { post_ids: Array.from(selectedIds), updates: { status } },
-      });
-
-      if (error) throw error;
-      toast.success(`Updated ${selectedIds.size} posts to ${status}`);
-      clearSelection();
-      fetchPosts();
+      await bulkUpdatePosts(targetIds, { status: status as SocialStatus });
+      showToastSuccess(`Updated ${targetIds.length} posts to ${status}`);
     } catch (error) {
-      toast.error("Failed to update posts");
+      setPosts(previousPosts);
+      setSelectedIds(previousSelected);
+      showToastError("Failed to update posts");
       console.error(error);
     } finally {
       setBulkLoading(false);
@@ -231,45 +203,50 @@ export default function Posts() {
   };
 
   const handleBulkSchedule = async (date: Date) => {
+    const targetIds = visibleSelectedIds;
+    if (targetIds.length === 0) {
+      showToastError("No visible selected posts to schedule");
+      return;
+    }
+
+    if (hiddenSelectedCount > 0) {
+      toast({ title: "Some selections were skipped", description: `${hiddenSelectedCount} hidden selection(s) were skipped` });
+    }
+
+    const previousPosts = posts;
+    const previousSelected = new Set(selectedIds);
+    const scheduledAt = date.toISOString();
+    setPosts((current) =>
+      current.map((post) =>
+        targetIds.includes(post.id)
+          ? { ...post, status: SOCIAL_STATUS_SCHEDULED, scheduled_at: scheduledAt }
+          : post
+      )
+    );
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      targetIds.forEach((id) => next.delete(id));
+      return next;
+    });
+
     setBulkLoading(true);
     try {
-      const { error } = await supabase.functions.invoke("bulk-update-posts", {
-        body: {
-          post_ids: Array.from(selectedIds),
-          updates: {
-            status: "scheduled",
-            scheduled_at: date.toISOString(),
-          },
-        },
-      });
-
-      if (error) throw error;
-      toast.success(`Scheduled ${selectedIds.size} posts`);
-      clearSelection();
-      fetchPosts();
+      await bulkUpdatePosts(targetIds, { status: SOCIAL_STATUS_SCHEDULED, scheduled_at: scheduledAt });
+      showToastSuccess(`Scheduled ${targetIds.length} posts`);
     } catch (error) {
-      toast.error("Failed to schedule posts");
+      setPosts(previousPosts);
+      setSelectedIds(previousSelected);
+      showToastError("Failed to schedule posts");
       console.error(error);
     } finally {
       setBulkLoading(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "published":
-        return "bg-chart-3";
-      case "scheduled":
-        return "bg-accent";
-      default:
-        return "bg-muted";
-    }
-  };
-
   return (
     <DashboardLayout>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold">Posts</h1>
             <p className="text-muted-foreground">Manage your social media posts</p>
@@ -303,7 +280,7 @@ export default function Posts() {
 
         {selectedIds.size > 0 && (
           <BulkActionToolbar
-            selectedCount={selectedIds.size}
+            selectedCount={visibleSelectedIds.length}
             totalCount={filteredPosts.length}
             onSelectAll={selectAll}
             onClearSelection={clearSelection}
@@ -313,23 +290,55 @@ export default function Posts() {
             isLoading={bulkLoading}
           />
         )}
-
-        <PlatformActivityFeed 
-          items={platformActivities} 
-          loading={platformActivityLoading} 
-          onRefresh={refreshPlatformActivity}
-        />
+        {hiddenSelectedCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {hiddenSelectedCount} selected post(s) hidden by filters. Bulk actions apply only to visible selected posts.
+          </p>
+        )}
 
         {loading ? (
-          <div className="text-center py-12">Loading...</div>
+          <div className="flex flex-col items-center justify-center h-[420px] rounded-xl border border-border/50 bg-card">
+            <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-muted border-t-primary" />
+            <p className="text-muted-foreground mt-4 text-sm">Loading your posts...</p>
+          </div>
+        ) : fetchError ? (
+          <Card>
+            <CardContent className="py-10 text-center space-y-4">
+              <p className="text-muted-foreground">{fetchError}</p>
+              <div className="flex items-center justify-center gap-2">
+                <Button onClick={fetchPosts} disabled={bulkLoading}>
+                  Retry
+                </Button>
+                <Button variant="outline" onClick={clearFilters}>
+                  Clear Filters
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ) : filteredPosts.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center">
+            <CardContent className="py-12 text-center space-y-4">
               <p className="text-muted-foreground">
                 {posts.length === 0
                   ? "No posts yet. Create your first post!"
                   : "No posts match your filters."}
               </p>
+              <div className="flex items-center justify-center gap-2">
+                {posts.length === 0 ? (
+                  <Button onClick={() => navigate("/posts/create")}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Post
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={clearFilters}>Clear Filters</Button>
+                    <Button onClick={() => navigate("/posts/create")}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Post
+                    </Button>
+                  </>
+                )}
+              </div>
             </CardContent>
           </Card>
         ) : (

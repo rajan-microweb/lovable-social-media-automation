@@ -71,3 +71,44 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Local Development
+
+### Prerequisites
+
+- Node.js and npm installed
+
+### Environment Variables
+
+This app expects Supabase env vars to be available to Vite at build time.
+
+Create a `.env` file in the project root with:
+
+```bash
+VITE_SUPABASE_URL="your_supabase_project_url"
+VITE_SUPABASE_PUBLISHABLE_KEY="your_supabase_publishable_anon_key"
+```
+
+Optional:
+
+```bash
+PORT=2003
+```
+
+### Commands
+
+- Install dependencies: `npm i`
+- Start dev server: `npm run dev`
+- Build: `npm run build`
+- Lint: `npm run lint`
+- Run tests: `npm test`
+- Build bundle report: `npm run analyze`
+
+## Project Architecture
+
+See `docs/architecture.md` for:
+
+- route structure (`src/App.tsx`, `src/components/ProtectedRoute.tsx`)
+- Supabase data access layer (`src/lib/api/*`)
+- shared domain types (`src/types/*`)
+- filtering/sorting helpers (`src/lib/posts/*`)

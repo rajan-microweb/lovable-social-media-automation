@@ -10,6 +10,17 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Edit,
   Trash2,
   Calendar,
@@ -30,24 +41,12 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-
-interface Post {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-  scheduled_at: string | null;
-  type_of_post: string | null;
-  platforms: string[] | null;
-  account_type: string | null;
-  text: string | null;
-  image: string | null;
-  video: string | null;
-  pdf: string | null;
-  url: string | null;
-  tags: string[] | null;
-  created_at: string;
-}
+import type { Post } from "@/types/post";
+import {
+  normalizeSocialPlatform,
+  type SocialPlatform,
+  type SocialStatus,
+} from "@/types/social";
 
 interface PostCardProps {
   post: Post;
@@ -56,7 +55,7 @@ interface PostCardProps {
   onDelete: (id: string) => void;
 }
 
-const platformConfig: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
+const platformConfig: Record<SocialPlatform, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
   linkedin: { icon: Linkedin, color: "text-[#0A66C2]", bgColor: "bg-[#0A66C2]/10", label: "LinkedIn" },
   facebook: { icon: Facebook, color: "text-[#1877F2]", bgColor: "bg-[#1877F2]/10", label: "Facebook" },
   instagram: { icon: Instagram, color: "text-[#E4405F]", bgColor: "bg-[#E4405F]/10", label: "Instagram" },
@@ -64,7 +63,7 @@ const platformConfig: Record<string, { icon: React.ElementType; color: string; b
   twitter: { icon: Twitter, color: "text-[#1DA1F2]", bgColor: "bg-[#1DA1F2]/10", label: "Twitter / X" },
 };
 
-const statusConfig: Record<string, { className: string; label: string }> = {
+const statusConfig: Record<SocialStatus, { className: string; label: string }> = {
   published: { className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20", label: "Published" },
   scheduled: { className: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20", label: "Scheduled" },
   draft: { className: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20", label: "Draft" },
@@ -96,7 +95,7 @@ export function PostCard({ post, isSelected, onToggleSelect, onDelete }: PostCar
   const [expanded, setExpanded] = useState(false);
   const typeConfig = getPostTypeConfig(post.type_of_post);
   const TypeIcon = typeConfig.icon;
-  const status = statusConfig[post.status] || statusConfig.draft;
+  const status = statusConfig[post.status];
 
   const hasMedia = post.image || post.video || post.pdf;
   const hasLongText = (post.text?.length || 0) > 120;
@@ -183,8 +182,9 @@ export function PostCard({ post, isSelected, onToggleSelect, onDelete }: PostCar
         {post.platforms && post.platforms.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pl-6">
             {post.platforms.map((platform) => {
-              const config = platformConfig[platform.toLowerCase()];
-              if (!config) return null;
+              const platformKey = normalizeSocialPlatform(platform);
+              if (!platformKey) return null;
+              const config = platformConfig[platformKey];
               const PlatformIcon = config.icon;
               return (
                 <div
@@ -260,17 +260,36 @@ export function PostCard({ post, isSelected, onToggleSelect, onDelete }: PostCar
               variant="ghost"
               className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
               onClick={() => navigate(`/posts/${post.id}/edit`)}
+              aria-label={`Edit post ${post.title || ""}`.trim()}
             >
               <Edit className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive transition-colors"
-              onClick={() => onDelete(post.id)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                  aria-label={`Delete post ${post.title || ""}`.trim()}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete post?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. The selected post (and associated media) will be permanently deleted.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onDelete(post.id)}>
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </CardContent>
