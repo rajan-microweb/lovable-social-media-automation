@@ -395,29 +395,13 @@ export default function Calendar() {
   );
 
   const visibleWeekHours = useMemo(() => {
-    if (view !== "week") return Array.from({ length: 24 }, (_, i) => i);
-    const used = new Set<number>();
-    for (const day of weekDays) {
-      const dayEvents = getEventsForDay(day);
-      for (const event of dayEvents) used.add(event.hour);
-    }
-    const currentHour = getHours(new Date());
-    used.add(currentHour);
-    used.add(Math.max(0, currentHour - 1));
-    used.add(Math.min(23, currentHour + 1));
-    return Array.from(used).sort((a, b) => a - b);
+    // Keep the optimized data model, but render the full hour grid for accessibility/clarity.
+    return Array.from({ length: 24 }, (_, i) => i);
   }, [view, weekDays, eventsByDateKey]);
 
   const visibleDayHours = useMemo(() => {
-    if (view !== "day") return Array.from({ length: 24 }, (_, i) => i);
-    const used = new Set<number>();
-    const dayEvents = getEventsForDay(currentDate);
-    for (const event of dayEvents) used.add(event.hour);
-    const currentHour = getHours(new Date());
-    used.add(currentHour);
-    used.add(Math.max(0, currentHour - 1));
-    used.add(Math.min(23, currentHour + 1));
-    return Array.from(used).sort((a, b) => a - b);
+    // Keep the optimized data model, but render the full hour grid for accessibility/clarity.
+    return Array.from({ length: 24 }, (_, i) => i);
   }, [view, currentDate, eventsByDateKey]);
 
   // === WEEK VIEW ===
@@ -430,10 +414,24 @@ export default function Calendar() {
         <div className="grid grid-cols-[60px_repeat(7,1fr)] bg-muted/50 sticky top-0 z-10">
           <div className="p-2 border-r border-border/30" />
           {days.map((day) => (
-            <div key={day.toString()} className={cn(
-              "p-2.5 text-center border-r border-border/30 last:border-r-0",
-              isSameDay(day, new Date()) && "bg-primary/8",
-            )}>
+            <div
+              key={day.toString()}
+              role="button"
+              tabIndex={0}
+              aria-label={`Select day ${format(day, "MMMM d, yyyy")}`}
+              onClick={() => setCurrentDate(day)}
+              onKeyDown={(e) => {
+                if (e.key === " " || e.key === "Spacebar") {
+                  e.preventDefault();
+                  setCurrentDate(day);
+                }
+                if (e.key === "Enter") setCurrentDate(day);
+              }}
+              className={cn(
+                "p-2.5 text-center border-r border-border/30 last:border-r-0 cursor-pointer",
+                isSameDay(day, new Date()) && "bg-primary/8",
+              )}
+            >
                 <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{format(day, "EEE")}</div>
                 <div className={cn(
                   "text-lg font-bold w-9 h-9 mx-auto flex items-center justify-center rounded-full mt-0.5 transition-colors",
