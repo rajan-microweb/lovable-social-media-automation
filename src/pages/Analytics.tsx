@@ -92,7 +92,7 @@ function groupLabel(date: Date, grouping: TimeGrouping): string {
   }
 }
 
-export default function Analytics() {
+export function AnalyticsPanel() {
   const { user, workspaceId } = useAuth();
 
   const [timeGrouping, setTimeGrouping] = useState<TimeGrouping>("daily");
@@ -265,7 +265,6 @@ export default function Analytics() {
   };
 
   return (
-    <DashboardLayout>
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -493,6 +492,13 @@ export default function Analytics() {
           </CardContent>
         </Card>
       </div>
+  );
+}
+
+export default function Analytics() {
+  return (
+    <DashboardLayout>
+      <AnalyticsPanel />
     </DashboardLayout>
   );
 }

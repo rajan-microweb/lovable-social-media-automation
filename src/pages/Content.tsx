@@ -205,9 +205,11 @@ function compareRows(a: ContentRow, b: ContentRow, sortBy: SortField, sortOrder:
 export function ContentView({
   initialMode,
   showModeTabs = true,
+  showLayout = true,
 }: {
   initialMode: ContentMode;
   showModeTabs?: boolean;
+  showLayout?: boolean;
 }) {
   const { user, workspaceId } = useAuth();
   const navigate = useNavigate();

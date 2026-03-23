@@ -15,6 +15,7 @@ export type PublishJobRow = {
 
 export type PublishJobView = PublishJobRow & {
   title?: string | null;
+  content_missing?: boolean;
 };
 
 export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise<PublishJobView[]> {
@@ -44,9 +45,32 @@ export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise
   const storyTitleById = new Map((stories || []).map((s) => [s.id, s.title]));
 
   return safeJobs.map((job) => {
-    const title =
-      job.content_type === "post" ? postTitleById.get(job.content_id) : storyTitleById.get(job.content_id);
-    return { ...job, title };
+    if (job.content_type === "post") {
+      const has = postTitleById.has(job.content_id);
+      const title = postTitleById.get(job.content_id) ?? null;
+      return { ...job, title, content_missing: !has };
+    }
+
+    const has = storyTitleById.has(job.content_id);
+    const title = storyTitleById.get(job.content_id) ?? null;
+    return { ...job, title, content_missing: !has };
   });
+}
+
+export async function requeuePublishJob(
+  jobId: string,
+  params: { runAtIso?: string; clearLastError?: boolean } = {}
+): Promise<void> {
+  const runAtIso = params.runAtIso ?? new Date().toISOString();
+  const clearLastError = params.clearLastError ?? false;
+
+  const payload: Partial<Pick<PublishJobRow, "state" | "run_at" | "last_error">> = {
+    state: "queued",
+    run_at: runAtIso,
+    ...(clearLastError ? { last_error: null } : {}),
+  };
+
+  const { error } = await supabase.from("publish_jobs").update(payload).eq("id", jobId);
+  if (error) throw error;
 }
 
