@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { usePlatformAccounts } from "@/hooks/usePlatformAccounts";
 import { PlatformAccountSelector } from "@/components/posts/PlatformAccountSelector";
+import { useTemplates } from "@/hooks/useTemplates";
 
 // Platform configuration based on post type
 const PLATFORM_MAP: Record<string, string[]> = {
@@ -59,14 +60,22 @@ const postSchema = z.object({
 export default function CreatePost() {
   const { user, workspaceId } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const approvalsEnabled = import.meta.env.VITE_ENABLE_APPROVALS === "true";
 
   // Content templates (Publer-like quick apply)
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [pendingTemplate, setPendingTemplate] = useState<any | null>(null);
+  const { data: templatesData, isLoading: templatesLoading, isFetching: templatesFetching } = useTemplates({
+    workspaceId: workspaceId || undefined,
+    kind: "post",
+    includeGlobal: true,
+    sort: "updated_desc",
+    page: 0,
+    pageSize: 100,
+  });
+  const templates = templatesData?.items || [];
 
   // Form state
   const [typeOfPost, setTypeOfPost] = useState("");
@@ -127,6 +136,21 @@ export default function CreatePost() {
   // Available platforms based on post type
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
 
+  const toDateTimeLocalValue = (date: Date) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
+  useEffect(() => {
+    if (scheduledAt) return;
+    const prefillScheduledAt = (location.state as { prefillScheduledAt?: string } | null)?.prefillScheduledAt;
+    if (!prefillScheduledAt) return;
+    const parsed = new Date(prefillScheduledAt);
+    if (Number.isNaN(parsed.getTime())) return;
+    setScheduledAt(toDateTimeLocalValue(parsed));
+    setStatus("scheduled");
+  }, [location.state, scheduledAt]);
+
   // Fetch connected platforms on mount
   useEffect(() => {
     const fetchConnectedPlatforms = async () => {
@@ -150,33 +174,13 @@ export default function CreatePost() {
     fetchConnectedPlatforms();
   }, [user]);
 
-  // Load global + workspace templates for posts.
   useEffect(() => {
-    const fetchTemplates = async () => {
-      if (!user || !workspaceId) return;
-      setTemplatesLoading(true);
-      try {
-        const { data, error } = await (supabase as any)
-          .from("content_templates" as any)
-          .select("*")
-          .eq("kind", "post")
-          // workspace_id IS NULL (global templates) OR workspace-specific
-          .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        setTemplates(data || []);
-      } catch (e: any) {
-        console.error(e);
-        toast.error(e?.message || "Failed to load content templates");
-        setTemplates([]);
-      } finally {
-        setTemplatesLoading(false);
-      }
-    };
-
-    fetchTemplates();
-  }, [user, workspaceId]);
+    const templateIdToApply = (location.state as { templateIdToApply?: string } | null)?.templateIdToApply;
+    if (!templateIdToApply || !templates.length || selectedTemplateId) return;
+    const target = templates.find((t) => t.id === templateIdToApply);
+    if (!target) return;
+    handleTemplateSelection(templateIdToApply);
+  }, [location.state, selectedTemplateId, templates]);
 
   // Reset form when type changes
   useEffect(() => {
@@ -262,12 +266,26 @@ export default function CreatePost() {
     }
 
     const tpl = templates.find((t) => t.id === templateId);
-    if (!tpl) return;
+    if (!tpl) {
+      toast.warning("Selected template is no longer available.");
+      setSelectedTemplateId("");
+      return;
+    }
 
     setSelectedTemplateId(templateId);
     setPendingTemplate(tpl);
     setTypeOfPost(tpl.type_of_post || "");
+    toast.success(`Applied template: ${tpl.template_name}`);
   };
+
+  useEffect(() => {
+    if (!selectedTemplateId || templatesLoading || templatesFetching) return;
+    const exists = templates.some((t) => t.id === selectedTemplateId);
+    if (exists) return;
+    setSelectedTemplateId("");
+    setPendingTemplate(null);
+    toast.warning("Previously selected template was removed.");
+  }, [selectedTemplateId, templates, templatesFetching, templatesLoading]);
 
   // Reset selected accounts when platforms change (but only when accounts have loaded)
   useEffect(() => {

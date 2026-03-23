@@ -117,9 +117,12 @@ export default function Calendar() {
   const [selectedEvent, setSelectedEvent] = useState<ContentItem | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [quickAddDate, setQuickAddDate] = useState<Date | null>(null);
   const country = useMemo<CountryCode>(() => detectUserCountry(), []);
   const weekStartsOn = useMemo<WeekStartsOn>(() => getWeekStartsOn(), []);
   const fetchRequestIdRef = useRef(0);
+  /** Browsers may emit a click on the drop target after drag-and-drop; ignore it for week slot navigation. */
+  const suppressWeekSlotClickAfterDropRef = useRef(false);
 
   const visibleRange = useMemo(() => {
     if (view === "month") {
@@ -200,6 +203,30 @@ export default function Calendar() {
   };
 
   const goToToday = () => setCurrentDate(new Date());
+
+  /** Week view: jump to the full day schedule for the chosen date. */
+  const goToDayView = (day: Date) => {
+    setCurrentDate(day);
+    setView("day");
+  };
+
+  const dateAtHour = (day: Date, hour: number) =>
+    new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0);
+
+  const openQuickAddAt = (date: Date) => {
+    setQuickAddDate(date);
+  };
+
+  const handleQuickAdd = (kind: ContentKind) => {
+    if (!quickAddDate) return;
+    const path = kind === "post" ? "/posts/create" : "/stories/create";
+    navigate(path, {
+      state: {
+        prefillScheduledAt: quickAddDate.toISOString(),
+        fromCalendar: true,
+      },
+    });
+  };
 
   const computedEvents = useMemo<CalendarEventComputed[]>(
     () => {
@@ -358,6 +385,11 @@ export default function Calendar() {
     e.preventDefault();
     e.stopPropagation();
 
+    suppressWeekSlotClickAfterDropRef.current = true;
+    window.setTimeout(() => {
+      suppressWeekSlotClickAfterDropRef.current = false;
+    }, 100);
+
     setDragOverKey(null);
 
     const payloadStr = e.dataTransfer.getData("application/x-calendar-event");
@@ -475,14 +507,21 @@ export default function Calendar() {
             key={day.toString()}
             role="button"
             tabIndex={0}
-            aria-label={`Select day ${format(currentDay, "MMMM d, yyyy")}`}
-            onClick={() => setCurrentDate(currentDay)}
+            aria-label={`Open day view for ${format(currentDay, "EEEE, MMMM d, yyyy")}`}
+            onClick={() => {
+              openQuickAddAt(new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate(), 9, 0, 0, 0));
+              goToDayView(currentDay);
+            }}
             onKeyDown={(e) => {
               if (e.key === " " || e.key === "Spacebar") {
                 e.preventDefault();
-                setCurrentDate(currentDay);
+                openQuickAddAt(new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate(), 9, 0, 0, 0));
+                goToDayView(currentDay);
               }
-              if (e.key === "Enter") setCurrentDate(currentDay);
+              if (e.key === "Enter") {
+                openQuickAddAt(new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate(), 9, 0, 0, 0));
+                goToDayView(currentDay);
+              }
             }}
             className={cn(
               "group min-h-[150px] p-2.5 border-r border-b border-border/40 transition-all duration-200 cursor-pointer text-left",
@@ -564,17 +603,24 @@ export default function Calendar() {
               key={day.toString()}
               role="button"
               tabIndex={0}
-              aria-label={`Select day ${format(day, "MMMM d, yyyy")}`}
-              onClick={() => setCurrentDate(day)}
+              aria-label={`Open day view for ${format(day, "EEEE, MMMM d, yyyy")}`}
+              onClick={() => {
+                openQuickAddAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0, 0));
+                goToDayView(day);
+              }}
               onKeyDown={(e) => {
                 if (e.key === " " || e.key === "Spacebar") {
                   e.preventDefault();
-                  setCurrentDate(day);
+                  openQuickAddAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0, 0));
+                  goToDayView(day);
                 }
-                if (e.key === "Enter") setCurrentDate(day);
+                if (e.key === "Enter") {
+                  openQuickAddAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0, 0));
+                  goToDayView(day);
+                }
               }}
               className={cn(
-                "p-2.5 text-center border-r border-border/30 last:border-r-0 cursor-pointer",
+                "p-2.5 text-center border-r border-border/30 last:border-r-0 cursor-pointer hover:bg-muted/40",
                 isSameDay(day, new Date()) && "bg-primary/8",
               )}
             >
@@ -601,9 +647,13 @@ export default function Calendar() {
                   <div
                     key={dropKey}
                     className={cn(
-                      "min-h-[50px] p-0.5 border-r border-border/15 last:border-r-0 transition-colors",
+                      "min-h-[50px] p-0.5 border-r border-border/15 last:border-r-0 transition-colors cursor-pointer hover:bg-muted/30",
                       dragOverKey === dropKey && "bg-primary/10"
                     )}
+                    onClick={() => {
+                      if (suppressWeekSlotClickAfterDropRef.current) return;
+                      openQuickAddAt(dateAtHour(day, hour));
+                    }}
                     onDragOver={(e) => {
                       if (!workspaceId) return;
                       e.preventDefault();
@@ -660,6 +710,7 @@ export default function Calendar() {
                     "min-h-[60px] p-1.5 transition-colors",
                     dragOverKey === `${format(currentDate, "yyyy-MM-dd")}__${hour}` && "bg-primary/10"
                   )}
+                  onClick={() => openQuickAddAt(dateAtHour(currentDate, hour))}
                   onDragOver={(e) => {
                     if (!workspaceId) return;
                     e.preventDefault();
@@ -852,6 +903,23 @@ export default function Calendar() {
             </div>
           </div>
         </div>
+
+        {quickAddDate && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-card p-2.5">
+            <span className="text-xs text-muted-foreground">
+              Add content at <span className="font-semibold text-foreground">{format(quickAddDate, "EEE, MMM d, yyyy h:mm a")}</span>
+            </span>
+            <Button size="sm" className="h-8" onClick={() => handleQuickAdd("post")}>
+              Add Post
+            </Button>
+            <Button size="sm" variant="secondary" className="h-8" onClick={() => handleQuickAdd("story")}>
+              Add Story
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 ml-auto" onClick={() => setQuickAddDate(null)}>
+              Clear
+            </Button>
+          </div>
+        )}
 
         {/* Calendar Grid */}
         {loading ? (

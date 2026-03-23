@@ -23,6 +23,7 @@ import Library from "./pages/Library";
 import Analytics from "./pages/Analytics";
 import Approvals from "./pages/Approvals";
 import Settings from "./pages/Settings";
+import Templates from "./pages/Templates";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -130,6 +131,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Approvals />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/templates"
+              element={
+                <ProtectedRoute>
+                  <Templates />
                 </ProtectedRoute>
               }
             />

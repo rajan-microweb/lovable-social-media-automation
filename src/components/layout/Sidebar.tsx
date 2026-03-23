@@ -11,6 +11,7 @@ import {
   BarChart3,
   CheckSquare,
   Settings,
+  LayoutTemplate,
 } from "lucide-react";
 import { Fragment, type ElementType } from "react";
 import { NavLink } from "@/components/NavLink";
@@ -64,6 +65,7 @@ export function AppSidebar() {
       items: [
         { title: "Posts", url: "/posts", icon: FileText },
         { title: "Stories", url: "/stories", icon: Image },
+        { title: "Templates", url: "/templates", icon: LayoutTemplate },
         { title: "Library", url: "/library", icon: Images },
       ],
     },
