@@ -413,7 +413,7 @@ export function ProfilePanel() {
               </div>
             ) : null}
 
-            <Accordion type="multiple" collapsible defaultValue={["profile"]}>
+            <Accordion type="multiple" defaultValue={["profile"]}>
               <AccordionItem value="profile">
                 <AccordionTrigger className="px-4 rounded-lg border border-border/50 bg-card hover:bg-muted/30 transition-colors">
                   <span className="inline-flex items-center gap-2">
