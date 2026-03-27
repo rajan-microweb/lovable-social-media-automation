@@ -168,7 +168,7 @@ export default function Dashboard() {
         const mapped: ActivityItem[] = [
           ...posts.map((p: any) => ({
             id: p.id,
-            type: "post",
+            type: "post" as const,
             title: `${classify(p)}: ${p.title || "Untitled"}`,
             status: p.status,
             platforms: p.platforms,
@@ -176,7 +176,7 @@ export default function Dashboard() {
           })),
           ...stories.map((s: any) => ({
             id: s.id,
-            type: "story",
+            type: "story" as const,
             title: `${classify(s)}: ${s.title || "Untitled"}`,
             status: s.status,
             platforms: s.platforms,
