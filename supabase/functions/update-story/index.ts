@@ -6,7 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
 };
 
-// Rate limiting
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_MAX = 100;
 const RATE_LIMIT_WINDOW_MS = 60000;
@@ -14,21 +13,15 @@ const RATE_LIMIT_WINDOW_MS = 60000;
 function checkRateLimit(clientId: string): boolean {
   const now = Date.now();
   const record = rateLimitStore.get(clientId);
-  
   if (!record || now > record.resetTime) {
     rateLimitStore.set(clientId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
     return true;
   }
-  
-  if (record.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-  
+  if (record.count >= RATE_LIMIT_MAX) return false;
   record.count++;
   return true;
 }
 
-// Whitelist schema for allowed update fields
 const updateStorySchema = z.object({
   title: z.string().max(500).optional(),
   description: z.string().max(5000).optional(),
@@ -55,46 +48,35 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Check for API key auth first (for external integrations like n8n)
+    // Check for API key auth first, then JWT
     const apiKey = req.headers.get('x-api-key');
     const expectedApiKey = Deno.env.get('N8N_API_KEY');
     const authHeader = req.headers.get('Authorization');
 
     let userId: string | null = null;
-    let isApiKeyAuth = false;
 
     if (apiKey && apiKey === expectedApiKey) {
-      // API key authentication (external integrations)
-      isApiKeyAuth = true;
       console.log('Authenticated via API key');
     } else if (authHeader?.startsWith('Bearer ')) {
-      // JWT authentication (frontend) - use service role to verify user
       const token = authHeader.replace('Bearer ', '');
       const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
         auth: { autoRefreshToken: false, persistSession: false }
       });
-      
       const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-      
       if (userError || !user) {
-        console.error('JWT validation failed:', userError);
         return new Response(
           JSON.stringify({ error: 'Unauthorized - Invalid token' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
       userId = user.id;
-      console.log('Authenticated via JWT for user:', userId);
     } else {
-      console.error('No valid authentication provided');
       return new Response(
         JSON.stringify({ error: 'Unauthorized - Missing authentication' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Rate limiting by client IP
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
     if (!checkRateLimit(clientIp)) {
       return new Response(
@@ -103,24 +85,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
     const body = await req.json();
-    const { story_id, workspace_id, user_id: bodyUserId, ...rawUpdateData } = body;
+    const { story_id, workspace_id: _ignored, user_id: bodyUserId, ...rawUpdateData } = body;
 
-    if (!workspace_id) {
-      return new Response(
-        JSON.stringify({ error: 'workspace_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // For API key auth, user_id must be provided in body
-    // For JWT auth, use the authenticated user's ID
-    const targetUserId = isApiKeyAuth ? bodyUserId : userId;
+    // For API key auth, user_id must be in body; for JWT, use authenticated user
+    const targetUserId = userId || bodyUserId;
 
     if (!targetUserId) {
       return new Response(
@@ -130,43 +103,32 @@ Deno.serve(async (req) => {
     }
 
     const uuidSchema = z.string().uuid();
-    const userIdResult = uuidSchema.safeParse(targetUserId);
-    if (!userIdResult.success) {
+    if (!uuidSchema.safeParse(targetUserId).success) {
       return new Response(
         JSON.stringify({ error: 'Invalid user_id format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const workspaceIdResult = uuidSchema.safeParse(workspace_id);
-    if (!workspaceIdResult.success) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid workspace_id format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // workspace_id = user_id for personal workspaces
+    const workspace_id = targetUserId;
 
     if (!story_id) {
-      console.error('Missing story_id in request');
       return new Response(
         JSON.stringify({ error: 'story_id is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validate story_id is a valid UUID
-    const storyIdResult = uuidSchema.safeParse(story_id);
-    if (!storyIdResult.success) {
+    if (!uuidSchema.safeParse(story_id).success) {
       return new Response(
         JSON.stringify({ error: 'Invalid story_id format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validate and whitelist update data
     const validationResult = updateStorySchema.safeParse(rawUpdateData);
     if (!validationResult.success) {
-      console.error('Validation error:', validationResult.error.errors);
       return new Response(
         JSON.stringify({ error: 'Invalid update data', details: validationResult.error.errors }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -184,7 +146,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (membershipError) {
-      console.error('Error checking workspace membership:', membershipError);
       return new Response(
         JSON.stringify({ error: 'Failed to verify workspace membership' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -192,14 +153,13 @@ Deno.serve(async (req) => {
     }
 
     if (!membership) {
-      console.error('Unauthorized: Not a workspace member');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Verify story is within the workspace
+    // Verify story belongs to workspace
     const { data: story, error: fetchError } = await supabase
       .from('stories')
       .select('workspace_id')
@@ -207,7 +167,6 @@ Deno.serve(async (req) => {
       .single();
 
     if (fetchError || !story) {
-      console.error('Story not found:', fetchError);
       return new Response(
         JSON.stringify({ error: 'Story not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -215,14 +174,13 @@ Deno.serve(async (req) => {
     }
 
     if (story.workspace_id !== workspace_id) {
-      console.error('Unauthorized: Story does not belong to the workspace');
       return new Response(
         JSON.stringify({ error: 'Unauthorized - Wrong workspace' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Updating story:', story_id, 'for user:', targetUserId, 'with validated data:', updateData);
+    console.log('Updating story:', story_id, 'for user:', targetUserId, 'with data:', updateData);
 
     const { data, error } = await supabase
       .from('stories')
@@ -233,21 +191,17 @@ Deno.serve(async (req) => {
       .single();
 
     if (error) {
-      console.error('Error updating story:', error);
       return new Response(
         JSON.stringify({ error: error.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Story updated successfully:', data);
-
     return new Response(
       JSON.stringify({ success: true, data }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error in update-story function:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
       JSON.stringify({ error: errorMessage }),
