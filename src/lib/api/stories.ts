@@ -15,7 +15,7 @@ export async function fetchStoriesForUser(workspaceId: string): Promise<Story[]>
 
 export async function deleteStoryForUser(workspaceId: string, storyId: string): Promise<void> {
   const { error } = await supabase.functions.invoke("delete-story", {
-    body: { story_id: storyId, workspace_id: workspaceId },
+    body: { story_id: storyId, user_id: workspaceId },
   });
 
   if (error) throw error;
@@ -23,7 +23,7 @@ export async function deleteStoryForUser(workspaceId: string, storyId: string): 
 
 export async function bulkDeleteStories(workspaceId: string, storyIds: string[]): Promise<void> {
   const { error } = await supabase.functions.invoke("bulk-delete-stories", {
-    body: { workspace_id: workspaceId, story_ids: storyIds },
+    body: { story_ids: storyIds },
   });
 
   if (error) throw error;
@@ -35,7 +35,7 @@ export async function bulkUpdateStories(
   updates: { status?: SocialStatus; scheduled_at?: string }
 ): Promise<void> {
   const { error } = await supabase.functions.invoke("bulk-update-stories", {
-    body: { workspace_id: workspaceId, story_ids: storyIds, updates },
+    body: { story_ids: storyIds, updates },
   });
 
   if (error) throw error;

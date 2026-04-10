@@ -14,7 +14,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Get user from JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -37,14 +36,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { post_ids, workspace_id } = await req.json();
+    const { post_ids } = await req.json();
 
-    if (!workspace_id) {
-      return new Response(
-        JSON.stringify({ error: "workspace_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // workspace_id = user_id for personal workspaces
+    const workspace_id = user.id;
 
     if (!Array.isArray(post_ids) || post_ids.length === 0) {
       return new Response(
@@ -62,7 +57,6 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch posts to verify ownership and get media URLs
     // Verify caller is a member of the workspace
     const { data: membership, error: membershipError } = await supabase
       .from("workspace_members")
@@ -72,7 +66,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (membershipError) {
-      console.error("Error checking workspace membership:", membershipError);
       return new Response(
         JSON.stringify({ error: "Failed to verify workspace membership" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -93,14 +86,12 @@ Deno.serve(async (req) => {
       .in("id", post_ids);
 
     if (fetchError) {
-      console.error("Error fetching posts:", fetchError);
       return new Response(
         JSON.stringify({ error: "Failed to verify post ownership" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check if posts exist
     if (!posts || posts.length === 0) {
       return new Response(
         JSON.stringify({ success: true, deleted: 0, message: "Posts already deleted or not found" }),
@@ -108,7 +99,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check all posts belong to the workspace
     const unauthorized = posts.filter((p) => p.workspace_id !== workspace_id);
     if (unauthorized.length > 0 || posts.length !== post_ids.length) {
       return new Response(
@@ -119,7 +109,7 @@ Deno.serve(async (req) => {
 
     // Collect media files to delete
     const mediaFiles: string[] = [];
-    posts?.forEach((post) => {
+    posts.forEach((post) => {
       [post.image, post.video, post.pdf].forEach((url) => {
         if (url && url.includes("post-media")) {
           const match = url.match(/post-media\/(.+)/);
@@ -128,7 +118,6 @@ Deno.serve(async (req) => {
       });
     });
 
-    // Delete media files
     if (mediaFiles.length > 0) {
       const { error: storageError } = await supabase.storage
         .from("post-media")
@@ -138,7 +127,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Delete posts
     const { error: deleteError } = await supabase
       .from("posts")
       .delete()
@@ -146,14 +134,11 @@ Deno.serve(async (req) => {
       .eq("workspace_id", workspace_id);
 
     if (deleteError) {
-      console.error("Error deleting posts:", deleteError);
       return new Response(
         JSON.stringify({ error: "Failed to delete posts" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    console.log(`Bulk deleted ${post_ids.length} posts for user ${user.id} in workspace ${workspace_id}`);
 
     return new Response(
       JSON.stringify({ success: true, deleted: post_ids.length }),

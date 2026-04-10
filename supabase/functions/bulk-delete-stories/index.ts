@@ -14,7 +14,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Get user from JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -37,14 +36,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { story_ids, workspace_id } = await req.json();
+    const { story_ids } = await req.json();
 
-    if (!workspace_id) {
-      return new Response(
-        JSON.stringify({ error: "workspace_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // workspace_id = user_id for personal workspaces
+    const workspace_id = user.id;
 
     if (!Array.isArray(story_ids) || story_ids.length === 0) {
       return new Response(
@@ -71,7 +66,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (membershipError) {
-      console.error("Error checking workspace membership:", membershipError);
       return new Response(
         JSON.stringify({ error: "Failed to verify workspace membership" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -92,14 +86,12 @@ Deno.serve(async (req) => {
       .in("id", story_ids);
 
     if (fetchError) {
-      console.error("Error fetching stories:", fetchError);
       return new Response(
         JSON.stringify({ error: "Failed to verify story ownership" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check all stories belong to the workspace
     const unauthorized = stories?.filter((s) => s.workspace_id !== workspace_id) || [];
     if (unauthorized.length > 0 || stories?.length !== story_ids.length) {
       return new Response(
@@ -119,7 +111,6 @@ Deno.serve(async (req) => {
       });
     });
 
-    // Delete media files
     if (mediaFiles.length > 0) {
       const { error: storageError } = await supabase.storage
         .from("post-media")
@@ -129,7 +120,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Delete stories
     const { error: deleteError } = await supabase
       .from("stories")
       .delete()
@@ -137,14 +127,11 @@ Deno.serve(async (req) => {
       .eq("workspace_id", workspace_id);
 
     if (deleteError) {
-      console.error("Error deleting stories:", deleteError);
       return new Response(
         JSON.stringify({ error: "Failed to delete stories" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    console.log(`Bulk deleted ${story_ids.length} stories for user ${user.id} in workspace ${workspace_id}`);
 
     return new Response(
       JSON.stringify({ success: true, deleted: story_ids.length }),

@@ -14,7 +14,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Get user from JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -37,14 +36,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { story_ids, updates, workspace_id } = await req.json();
+    const { story_ids, updates } = await req.json();
 
-    if (!workspace_id) {
-      return new Response(
-        JSON.stringify({ error: "workspace_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // workspace_id = user_id for personal workspaces
+    const workspace_id = user.id;
 
     if (!Array.isArray(story_ids) || story_ids.length === 0) {
       return new Response(
@@ -71,7 +66,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (membershipError) {
-      console.error("Error checking workspace membership:", membershipError);
       return new Response(
         JSON.stringify({ error: "Failed to verify workspace membership" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -92,14 +86,12 @@ Deno.serve(async (req) => {
       .in("id", story_ids);
 
     if (fetchError) {
-      console.error("Error fetching stories:", fetchError);
       return new Response(
         JSON.stringify({ error: "Failed to verify story ownership" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check all stories belong to the workspace
     const unauthorized = stories?.filter((s) => s.workspace_id !== workspace_id) || [];
     if (unauthorized.length > 0 || stories?.length !== story_ids.length) {
       return new Response(
@@ -108,12 +100,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build update object
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (updates.status) updateData.status = updates.status;
     if (updates.scheduled_at) updateData.scheduled_at = updates.scheduled_at;
 
-    // Perform bulk update
     const { error: updateError } = await supabase
       .from("stories")
       .update(updateData)
@@ -121,14 +111,11 @@ Deno.serve(async (req) => {
       .eq("workspace_id", workspace_id);
 
     if (updateError) {
-      console.error("Error updating stories:", updateError);
       return new Response(
         JSON.stringify({ error: "Failed to update stories" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    console.log(`Bulk updated ${story_ids.length} stories for user ${user.id} in workspace ${workspace_id}`);
 
     return new Response(
       JSON.stringify({ success: true, updated: story_ids.length }),

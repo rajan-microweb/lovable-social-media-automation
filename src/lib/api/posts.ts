@@ -25,7 +25,7 @@ export async function deletePostForUser(workspaceId: string, postId: string): Pr
 
 export async function bulkDeletePosts(workspaceId: string, postIds: string[]): Promise<void> {
   const { error } = await supabase.functions.invoke("bulk-delete-posts", {
-    body: { workspace_id: workspaceId, post_ids: postIds },
+    body: { post_ids: postIds },
   });
 
   if (error) throw error;
@@ -37,9 +37,8 @@ export async function bulkUpdatePosts(
   updates: { status?: SocialStatus; scheduled_at?: string }
 ): Promise<void> {
   const { error } = await supabase.functions.invoke("bulk-update-posts", {
-    body: { workspace_id: workspaceId, post_ids: postIds, updates },
+    body: { post_ids: postIds, updates },
   });
 
   if (error) throw error;
 }
-
