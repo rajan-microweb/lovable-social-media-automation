@@ -370,6 +370,7 @@ export type Database = {
           metadata: Json | null
           pdf: string | null
           platforms: string[] | null
+          published_at: string | null
           recurrence_frequency: string
           recurrence_until: string | null
           scheduled_at: string | null
@@ -393,6 +394,7 @@ export type Database = {
           metadata?: Json | null
           pdf?: string | null
           platforms?: string[] | null
+          published_at?: string | null
           recurrence_frequency?: string
           recurrence_until?: string | null
           scheduled_at?: string | null
@@ -416,6 +418,7 @@ export type Database = {
           metadata?: Json | null
           pdf?: string | null
           platforms?: string[] | null
+          published_at?: string | null
           recurrence_frequency?: string
           recurrence_until?: string | null
           scheduled_at?: string | null
@@ -526,6 +529,7 @@ export type Database = {
           id: string
           image: string | null
           platforms: string[] | null
+          published_at: string | null
           recurrence_frequency: string
           recurrence_until: string | null
           scheduled_at: string | null
@@ -534,6 +538,7 @@ export type Database = {
           title: string
           type_of_story: string | null
           updated_at: string
+          url: string | null
           user_id: string
           video: string | null
           workspace_id: string
@@ -545,6 +550,7 @@ export type Database = {
           id?: string
           image?: string | null
           platforms?: string[] | null
+          published_at?: string | null
           recurrence_frequency?: string
           recurrence_until?: string | null
           scheduled_at?: string | null
@@ -553,6 +559,7 @@ export type Database = {
           title: string
           type_of_story?: string | null
           updated_at?: string
+          url?: string | null
           user_id: string
           video?: string | null
           workspace_id: string
@@ -564,6 +571,7 @@ export type Database = {
           id?: string
           image?: string | null
           platforms?: string[] | null
+          published_at?: string | null
           recurrence_frequency?: string
           recurrence_until?: string | null
           scheduled_at?: string | null
@@ -572,6 +580,7 @@ export type Database = {
           title?: string
           type_of_story?: string | null
           updated_at?: string
+          url?: string | null
           user_id?: string
           video?: string | null
           workspace_id?: string

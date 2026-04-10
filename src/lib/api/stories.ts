@@ -10,7 +10,7 @@ export async function fetchStoriesForUser(workspaceId: string): Promise<Story[]>
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data || []) as Story[];
+  return (data || []) as unknown as Story[];
 }
 
 export async function deleteStoryForUser(workspaceId: string, storyId: string): Promise<void> {
