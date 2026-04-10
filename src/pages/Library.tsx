@@ -182,9 +182,7 @@ export default function Library() {
 
       const { error: fnError } = await supabase.functions.invoke("delete-media", {
         body: {
-          workspace_id: workspaceId,
           file_path: asset.filePath,
-          user_id: user.id,
         },
       });
       if (fnError) throw fnError;

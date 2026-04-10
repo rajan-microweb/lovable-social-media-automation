@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const reviewApprovalSchema = z.object({
-  workspace_id: z.string().uuid(),
+  workspace_id: z.string().uuid().optional(), // ignored, derived from reviewer
   content_type: z.enum(["post", "story"]),
   content_id: z.string().uuid(),
   decision: z.enum(["approved", "rejected"]),
@@ -55,7 +55,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { workspace_id, content_type, content_id, decision, note } = parsed.data;
+    const { content_type, content_id, decision, note } = parsed.data;
+
+    // workspace_id = reviewer's user_id for personal workspaces
+    const workspace_id = reviewerId;
 
     // Enforce workspace admin-only reviews.
     const { data: adminMembership, error: membershipError } = await supabaseAdmin
