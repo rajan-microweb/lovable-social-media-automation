@@ -38,7 +38,6 @@ import {
   Instagram,
   Youtube,
   Twitter,
-  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -260,12 +259,12 @@ export function PostCard({ post, isSelected, onToggleSelect, onDelete, publishJo
             {post.status === "published" && post.url && (
               <Button
                 size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0 hover:bg-green-500/10 hover:text-green-600 transition-colors"
+                variant="outline"
+                className="h-7 px-2.5 text-[10px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5"
                 onClick={() => window.open(post.url!, "_blank")}
-                title="View Live Post"
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <div className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
+                Live
               </Button>
             )}
             <Button

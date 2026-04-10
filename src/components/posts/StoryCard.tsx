@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { Edit, Trash2, ExternalLink } from "lucide-react";
+import { Edit, Trash2 } from "lucide-react";
 import type { Story } from "@/types/story";
 import type { PublishJobState } from "@/lib/publishing/statusPipeline";
 import { getContentPipelineState, getContentPipelineStateUI } from "@/lib/publishing/statusPipeline";
@@ -103,13 +103,15 @@ export function StoryCard({ story, isSelected, onToggleSelect, onDelete, publish
 
         <div className="flex gap-2 pt-2">
           {story.status === "published" && story.url && (
-            <button
-              className="inline-flex items-center justify-center p-2 rounded-md hover:bg-green-500/10 hover:text-green-600 transition-colors text-muted-foreground"
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2.5 text-[10px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5"
               onClick={() => window.open(story.url!, "_blank")}
-              title="View Live Story"
             >
-              <ExternalLink className="h-4 w-4" />
-            </button>
+              <div className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
+              Live
+            </Button>
           )}
           <Button
             size="sm"

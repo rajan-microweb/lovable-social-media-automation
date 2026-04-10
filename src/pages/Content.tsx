@@ -4,6 +4,7 @@ import type { DateRange } from "react-day-picker";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { FilterBar } from "@/components/posts/FilterBar";
 import { BulkActionToolbar } from "@/components/posts/BulkActionToolbar";
@@ -326,6 +327,13 @@ export function ContentView({
     // Ensure consistent sorting across kinds.
     return merged.slice().sort((a, b) => compareRows(a, b, sortBy, sortOrder));
   }, [mode, filteredPosts, filteredStories, sortBy, sortOrder]);
+
+  const groupedRows = useMemo(() => {
+    return {
+      remaining: rows.filter((r) => (r.kind === "post" ? r.post.status : r.story.status) !== "published"),
+      published: rows.filter((r) => (r.kind === "post" ? r.post.status : r.story.status) === "published"),
+    };
+  }, [rows]);
 
   const visibleKeySet = useMemo(() => {
     return new Set(rows.map((r) => makeContentKey(r.kind, r.id)));
@@ -775,24 +783,66 @@ export function ContentView({
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {rows.map((row) => {
-              const content =
-                row.kind === "post"
-                  ? ({ ...row.post, kind: "post" } as const)
-                  : ({ ...row.story, kind: "story" } as const);
+          <div className="space-y-12">
+            {groupedRows.remaining.length > 0 && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 border-l-4 border-primary pl-4">
+                  <h2 className="text-xl font-bold tracking-tight">Remaining Content</h2>
+                  <Badge variant="secondary" className="rounded-full px-2.5">
+                    {groupedRows.remaining.length}
+                  </Badge>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {groupedRows.remaining.map((row) => {
+                    const content =
+                      row.kind === "post"
+                        ? ({ ...row.post, kind: "post" } as const)
+                        : ({ ...row.story, kind: "story" } as const);
 
-              return (
-                <ContentCard
-                  key={row.id}
-                  content={content as any}
-                  isSelected={selectedKeys.has(makeContentKey(row.kind, row.id))}
-                  onToggleSelect={() => toggleSelection(row.kind, row.id)}
-                  onDelete={row.kind === "post" ? handleDeletePost : handleDeleteStory}
-                  publishJobState={publishJobStateByKey[`${row.kind}:${row.id}`] ?? null}
-                />
-              );
-            })}
+                    return (
+                      <ContentCard
+                        key={row.id}
+                        content={content as any}
+                        isSelected={selectedKeys.has(makeContentKey(row.kind, row.id))}
+                        onToggleSelect={() => toggleSelection(row.kind, row.id)}
+                        onDelete={row.kind === "post" ? handleDeletePost : handleDeleteStory}
+                        publishJobState={publishJobStateByKey[`${row.kind}:${row.id}`] ?? null}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {groupedRows.published.length > 0 && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 border-l-4 border-green-500 pl-4">
+                  <h2 className="text-xl font-bold tracking-tight text-green-600">Published Content</h2>
+                  <Badge variant="outline" className="rounded-full px-2.5 bg-green-50 text-green-600 border-green-200">
+                    {groupedRows.published.length}
+                  </Badge>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 opacity-95">
+                  {groupedRows.published.map((row) => {
+                    const content =
+                      row.kind === "post"
+                        ? ({ ...row.post, kind: "post" } as const)
+                        : ({ ...row.story, kind: "story" } as const);
+
+                    return (
+                      <ContentCard
+                        key={row.id}
+                        content={content as any}
+                        isSelected={selectedKeys.has(makeContentKey(row.kind, row.id))}
+                        onToggleSelect={() => toggleSelection(row.kind, row.id)}
+                        onDelete={row.kind === "post" ? handleDeletePost : handleDeleteStory}
+                        publishJobState={publishJobStateByKey[`${row.kind}:${row.id}`] ?? null}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
