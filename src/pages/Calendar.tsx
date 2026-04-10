@@ -91,11 +91,11 @@ const getWeekStartsOn = (): WeekStartsOn => {
   try {
     // Use browser locale week info when available; fallback to Sunday.
     // Intl.Locale.weekInfo.firstDay is 1-7 (Mon-Sun), date-fns expects 0-6 (Sun-Sat).
-    const localeLike = (Intl as typeof Intl & { Locale?: new (tag: string) => { weekInfo?: { firstDay?: number } } }).Locale;
+    const localeLike = (Intl as any).Locale;
     if (localeLike) {
       const lang = navigator.language || "en-US";
       const locale = new localeLike(lang);
-      const firstDay = locale.weekInfo?.firstDay;
+      const firstDay = (locale as any).weekInfo?.firstDay;
       if (typeof firstDay === "number" && firstDay >= 1 && firstDay <= 7) {
         return (firstDay % 7) as WeekStartsOn;
       }

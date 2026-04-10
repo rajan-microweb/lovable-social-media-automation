@@ -374,7 +374,7 @@ export function AnalyticsPanel() {
                     <SelectItem value="all">All statuses</SelectItem>
                     {SOCIAL_STATUSES.map((s) => (
                       <SelectItem key={s} value={s}>
-                        {s.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                        {(s as string).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                       </SelectItem>
                     ))}
                   </SelectContent>

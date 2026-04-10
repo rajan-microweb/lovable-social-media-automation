@@ -54,7 +54,7 @@ export async function fetchScheduledCalendarEventsForUserInRange(
       .gte("scheduled_at", startIso)
       .lte("scheduled_at", endIso);
     if (error) throw error;
-    return data as PostRow[];
+    return data as unknown as PostRow[];
   };
 
   const fetchStories = async (select: string) => {
@@ -66,7 +66,7 @@ export async function fetchScheduledCalendarEventsForUserInRange(
       .gte("scheduled_at", startIso)
       .lte("scheduled_at", endIso);
     if (error) throw error;
-    return data as StoryRow[];
+    return data as unknown as StoryRow[];
   };
 
   let posts: PostRow[] = [];
