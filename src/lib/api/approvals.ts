@@ -82,7 +82,6 @@ export async function reviewContentApproval(params: {
 }): Promise<void> {
   const { data, error } = await supabase.functions.invoke("review-content-approval", {
     body: {
-      workspace_id: params.workspaceId,
       content_type: params.contentType,
       content_id: params.contentId,
       decision: params.decision,

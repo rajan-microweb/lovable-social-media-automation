@@ -47,16 +47,9 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     const body = await req.json();
-    const { file_path, file_url, workspace_id, user_id: bodyUserId } = body;
+    const { file_path, file_url, workspace_id: _ignored, user_id: bodyUserId } = body;
 
     const uuidSchema = z.string().uuid();
-    const workspaceIdResult = uuidSchema.safeParse(workspace_id);
-    if (!workspaceIdResult.success) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid or missing workspace_id format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Extract file path from URL if provided
     let filePath = file_path;
@@ -120,6 +113,9 @@ Deno.serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // workspace_id = user_id for personal workspaces
+    const workspace_id = targetUserId;
 
     // Ensure the file being deleted belongs to the authenticated user prefix.
     if (!filePath.startsWith(`${targetUserId}/`)) {
