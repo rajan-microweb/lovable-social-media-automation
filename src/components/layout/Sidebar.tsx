@@ -12,6 +12,7 @@ import {
   CheckSquare,
   Settings,
   LayoutTemplate,
+  History,
 } from "lucide-react";
 import { Fragment, type ElementType } from "react";
 import { NavLink } from "@/components/NavLink";
@@ -48,6 +49,7 @@ export function AppSidebar() {
 
   const publishItems = [
     { title: "Queue", url: "/queue", icon: ClipboardList },
+    { title: "History", url: "/history", icon: History },
     approvalsEnabled ? { title: "Approvals", url: "/approvals", icon: CheckSquare } : null,
   ].filter(Boolean) as SectionItem[];
 

@@ -38,6 +38,7 @@ import {
   Instagram,
   Youtube,
   Twitter,
+  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -251,9 +252,22 @@ export function PostCard({ post, isSelected, onToggleSelect, onDelete, publishJo
         {/* Footer actions */}
         <div className="flex items-center justify-between pt-2 border-t border-border/50 pl-6">
           <span className="text-[10px] text-muted-foreground">
-            {format(new Date(post.created_at), "MMM d, yyyy")}
+            {post.status === "published" && post.published_at 
+              ? `Published: ${format(new Date(post.published_at), "MMM d, yyyy")}` 
+              : format(new Date(post.created_at), "MMM d, yyyy")}
           </span>
           <div className="flex gap-1">
+            {post.status === "published" && post.url && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 hover:bg-green-500/10 hover:text-green-600 transition-colors"
+                onClick={() => window.open(post.url!, "_blank")}
+                title="View Live Post"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"

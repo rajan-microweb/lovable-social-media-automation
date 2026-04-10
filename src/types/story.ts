@@ -13,7 +13,8 @@ export interface Story {
   text: string | null;
   image: string | null;
   video: string | null;
+  url: string | null;
+  published_at?: string | null;
   updated_at?: string;
   created_at?: string;
 }
-

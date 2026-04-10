@@ -24,6 +24,7 @@ import Analytics from "./pages/Analytics";
 import Approvals from "./pages/Approvals";
 import Settings from "./pages/Settings";
 import Templates from "./pages/Templates";
+import History from "./pages/History";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/history"
+              element={
+                <ProtectedRoute>
+                  <History />
                 </ProtectedRoute>
               }
             />

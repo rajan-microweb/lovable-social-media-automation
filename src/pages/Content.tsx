@@ -204,10 +204,12 @@ function compareRows(a: ContentRow, b: ContentRow, sortBy: SortField, sortOrder:
 
 export function ContentView({
   initialMode,
+  initialStatus,
   showModeTabs = true,
   showLayout = true,
 }: {
   initialMode: ContentMode;
+  initialStatus?: string | null;
   showModeTabs?: boolean;
   showLayout?: boolean;
 }) {
@@ -227,7 +229,7 @@ export function ContentView({
 
   // Filter state
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(initialStatus ?? null);
   const [platformFilter, setPlatformFilter] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
 
@@ -624,11 +626,13 @@ export function ContentView({
   const empty = renderEmpty();
 
   const header =
-    mode === "posts"
-      ? { title: "Posts", subtitle: "Manage your social media posts" }
-      : mode === "stories"
-        ? { title: "Stories", subtitle: "Manage your social media stories" }
-        : { title: "Content", subtitle: "Manage posts and stories in one place" };
+    initialStatus === "published"
+      ? { title: "History", subtitle: "View your published posts and stories" }
+      : mode === "posts"
+        ? { title: "Posts", subtitle: "Manage your social media posts" }
+        : mode === "stories"
+          ? { title: "Stories", subtitle: "Manage your social media stories" }
+          : { title: "Content", subtitle: "Manage posts and stories in one place" };
 
   return (
     <DashboardLayout>
