@@ -31,13 +31,13 @@ const updatePostSchema = z.object({
   type_of_post: z.string().max(100).nullable().optional(),
   platforms: z.array(z.string().max(50)).nullable().optional(),
   account_type: z.string().max(200).nullable().optional(),
-  tags: z.array(z.string().max(100)).nullable().optional(),
+  tags: z.any().optional(),
   image: z.string().max(2000).nullable().optional(),
   video: z.string().max(2000).nullable().optional(),
   pdf: z.string().max(2000).nullable().optional(),
   url: z.string().max(2000).nullable().optional(),
-  published_at: z.string().datetime().nullable().optional(),
-}).strict();
+  published_at: z.string().nullable().optional(),
+});
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
