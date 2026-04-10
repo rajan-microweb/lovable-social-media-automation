@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const reviewerId = authUser.id;
+    const reviewerId = authUser.user.id;
     const body = await req.json().catch(() => ({}));
     const parsed = reviewApprovalSchema.safeParse(body);
     if (!parsed.success) {
