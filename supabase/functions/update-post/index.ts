@@ -36,6 +36,7 @@ const updatePostSchema = z.object({
   video: z.string().max(2000).nullable().optional(),
   pdf: z.string().max(2000).nullable().optional(),
   url: z.string().max(2000).nullable().optional(),
+  published_at: z.string().datetime().nullable().optional(),
 }).strict();
 
 Deno.serve(async (req) => {
