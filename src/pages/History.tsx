@@ -8,11 +8,11 @@ import { fetchPublishJobsForWorkspace, type PublishJobView } from "@/lib/api/que
 import { format, parseISO } from "date-fns";
 import { useEffect, useState } from "react";
 import { toast } from "@/hooks/use-toast";
-import { getContentPipelineStateBadgeClassName, getContentPipelineStateLabel } from "@/lib/publishing/statusPipeline";
 import { Input } from "@/components/ui/input";
 import { RefreshCw, ExternalLink } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SOCIAL_STATUS_PUBLISHED } from "@/types/social";
+import { getContentPipelineState, getContentPipelineStateBadgeClassName, getContentPipelineStateLabel } from "@/lib/publishing/statusPipeline";
 
 type HistoryMode = "all" | "posts" | "stories";
 
@@ -49,8 +49,19 @@ export function HistoryPanel() {
   const retryCountLabel = (count: number) => (count > 0 ? `${count} retries` : "0 retries");
 
   const filteredJobs = jobs.filter((job) => {
-    // Only show published jobs in history
-    if (job.state !== SOCIAL_STATUS_PUBLISHED) return false;
+    // Determine the effective state in the pipeline
+    const effectiveState = getContentPipelineState({
+      contentStatus: job.content_status as any,
+      publishJobState: job.state as any,
+    });
+
+    // Determine if we should show this in history:
+    // Published, Failed, or Content is Missing (Deleted)
+    const isPublished = effectiveState === SOCIAL_STATUS_PUBLISHED;
+    const isFailed = effectiveState === "failed";
+    const isDeleted = job.content_missing;
+
+    if (!isPublished && !isFailed && !isDeleted) return false;
 
     if (mode === "posts" && job.content_type !== "post") return false;
     if (mode === "stories" && job.content_type !== "story") return false;
@@ -143,34 +154,44 @@ export function HistoryPanel() {
                     <tbody>
                       {filteredJobs
                         .sort((a, b) => new Date(b.run_at).getTime() - new Date(a.run_at).getTime())
-                        .map((job) => (
-                        <tr key={job.id} className="border-t border-border/50 hover:bg-muted/5 transition-colors">
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            {format(parseISO(job.run_at), "MMM d, yyyy HH:mm")}
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="flex flex-col">
-                              <span className="font-medium">
-                                {job.content_missing ? "Deleted" : job.title || "(Untitled)"}{" "}
-                                <span className="text-xs text-muted-foreground font-normal">({job.content_type})</span>
-                              </span>
-                              {job.content_id && (
-                                <span className="text-xs text-muted-foreground truncate max-w-[320px]">{job.content_id}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <Badge
-                              variant="outline"
-                              className={
-                                job.content_missing
-                                  ? "bg-destructive/15 text-destructive border-destructive/30 capitalize"
-                                  : getContentPipelineStateBadgeClassName(job.state as any)
-                              }
-                            >
-                              {job.content_missing ? "Deleted" : getContentPipelineStateLabel(job.state as any)}
-                            </Badge>
-                          </td>
+                        .map((job) => {
+                          const effectiveState = getContentPipelineState({
+                            contentStatus: job.content_status as any,
+                            publishJobState: job.state as any,
+                          });
+
+                          return (
+                            <tr key={job.id} className="border-t border-border/50 hover:bg-muted/5 transition-colors">
+                              <td className="py-3 px-3 whitespace-nowrap">
+                                {format(parseISO(job.run_at), "MMM d, yyyy HH:mm")}
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="flex flex-col">
+                                  <span className="font-medium">
+                                    {job.content_missing ? (
+                                      <span className="text-muted-foreground line-through">Deleted Content</span>
+                                    ) : (
+                                      job.title || "(Untitled)"
+                                    )}{" "}
+                                    <span className="text-xs text-muted-foreground font-normal">({job.content_type})</span>
+                                  </span>
+                                  {job.content_id && (
+                                    <span className="text-xs text-muted-foreground truncate max-w-[320px]">{job.content_id}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    job.content_missing
+                                      ? "bg-destructive/15 text-destructive border-destructive/30 capitalize"
+                                      : getContentPipelineStateBadgeClassName(effectiveState)
+                                  }
+                                >
+                                  {job.content_missing ? "Deleted" : getContentPipelineStateLabel(effectiveState)}
+                                </Badge>
+                              </td>
                           <td className="py-3 px-3">
                             <span>{retryCountLabel(job.retry_count ?? 0)}</span>
                           </td>
@@ -186,7 +207,8 @@ export function HistoryPanel() {
                             </Button>
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                 </div>

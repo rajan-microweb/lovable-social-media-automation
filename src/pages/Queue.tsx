@@ -8,7 +8,7 @@ import { fetchPublishJobsForWorkspace, type PublishJobView, requeuePublishJob } 
 import { format, parseISO } from "date-fns";
 import { useEffect, useState } from "react";
 import { toast } from "@/hooks/use-toast";
-import { getContentPipelineStateBadgeClassName, getContentPipelineStateLabel } from "@/lib/publishing/statusPipeline";
+import { getContentPipelineStateBadgeClassName, getContentPipelineStateLabel, getContentPipelineState } from "@/lib/publishing/statusPipeline";
 import { Input } from "@/components/ui/input";
 import { Copy, RefreshCw, RotateCcw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,10 +51,23 @@ export function QueuePanel() {
   const retryCountLabel = (count: number) => (count > 0 ? `${count} retries` : "0 retries");
 
   const filteredJobs = jobs.filter((job) => {
+    // If the content is missing, it should probably be removed from the queue view
+    // as it can't be published anyway.
+    if (job.content_missing) return false;
+
+    // Determine the effective state in the pipeline
+    const effectiveState = getContentPipelineState({
+      contentStatus: job.content_status as any,
+      publishJobState: job.state as any,
+    });
+
     if (mode === "queue") {
-      if (!QUEUE_STATES.includes(job.state as any)) return false;
+      // If it's already published, remove it from the Queue tab (it moves to History)
+      if (effectiveState === "published") return false;
+      
+      if (!QUEUE_STATES.includes(effectiveState as any)) return false;
     } else {
-      if (!ERROR_STATES.includes(job.state as any)) return false;
+      if (!ERROR_STATES.includes(effectiveState as any)) return false;
     }
 
     const q = query.trim().toLowerCase();
@@ -194,13 +207,19 @@ export function QueuePanel() {
                           <td className="py-3 px-3">
                             <Badge
                               variant="outline"
-                              className={
-                                job.content_missing
-                                  ? "bg-destructive/15 text-destructive border-destructive/30 capitalize"
-                                  : getContentPipelineStateBadgeClassName(job.state as any)
-                              }
+                              className={getContentPipelineStateBadgeClassName(
+                                getContentPipelineState({
+                                  contentStatus: job.content_status as any,
+                                  publishJobState: job.state as any,
+                                })
+                              )}
                             >
-                              {job.content_missing ? "Deleted" : getContentPipelineStateLabel(job.state as any)}
+                              {getContentPipelineStateLabel(
+                                getContentPipelineState({
+                                  contentStatus: job.content_status as any,
+                                  publishJobState: job.state as any,
+                                })
+                              )}
                             </Badge>
                           </td>
                           <td className="py-3 px-3">

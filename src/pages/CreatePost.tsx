@@ -218,7 +218,7 @@ export default function CreatePost() {
         ? overrides.platforms.map((p: any) => String(p).toLowerCase())
         : []
     );
-    setSelectedAccountIds([]);
+    setSelectedAccountIds(Array.isArray(overrides.selectedAccountIds) ? overrides.selectedAccountIds : []);
 
     setPostTitle(overrides.postTitle ?? "");
     setPostDescription(overrides.postDescription ?? "");

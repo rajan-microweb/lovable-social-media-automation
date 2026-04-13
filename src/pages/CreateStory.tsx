@@ -168,7 +168,7 @@ export default function CreateStory() {
         ? overrides.platforms.map((p: any) => String(p).toLowerCase())
         : []
     );
-    setSelectedAccountIds([]);
+    setSelectedAccountIds(Array.isArray(overrides.selectedAccountIds) ? overrides.selectedAccountIds : []);
 
     setText(overrides.textContent ?? overrides.text ?? "");
     setImageUrl(overrides.imageUrl ?? overrides.image_url ?? "");

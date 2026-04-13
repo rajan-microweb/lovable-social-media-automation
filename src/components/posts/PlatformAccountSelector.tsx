@@ -125,7 +125,7 @@ export function PlatformAccountSelector({
               className="text-sm cursor-pointer flex items-center gap-2"
             >
               <Avatar className="w-6 h-6">
-                <AvatarImage src={account.avatar || undefined} alt={account.name} />
+                <AvatarImage src={account.avatar || undefined} alt={account.name} referrerPolicy="no-referrer" />
                 <AvatarFallback className={getPlatformColor(account.platform)}>
                   {getPlatformIcon(account.platform)}
                 </AvatarFallback>

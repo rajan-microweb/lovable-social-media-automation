@@ -16,6 +16,7 @@ export type PublishJobRow = {
 export type PublishJobView = PublishJobRow & {
   title?: string | null;
   content_missing?: boolean;
+  content_status?: string | null;
 };
 
 export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise<PublishJobView[]> {
@@ -34,26 +35,34 @@ export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise
 
   const [{ data: posts }, { data: stories }] = await Promise.all([
     postIds.length
-      ? supabase.from("posts").select("id, title").in("id", postIds)
+      ? supabase.from("posts").select("id, title, status").in("id", postIds)
       : Promise.resolve({ data: [] }),
     storyIds.length
-      ? supabase.from("stories").select("id, title").in("id", storyIds)
+      ? supabase.from("stories").select("id, title, status").in("id", storyIds)
       : Promise.resolve({ data: [] }),
   ]);
 
-  const postTitleById = new Map((posts || []).map((p) => [p.id, p.title]));
-  const storyTitleById = new Map((stories || []).map((s) => [s.id, s.title]));
+  const postDataById = new Map((posts || []).map((p) => [p.id, p]));
+  const storyDataById = new Map((stories || []).map((s) => [s.id, s]));
 
   return safeJobs.map((job) => {
     if (job.content_type === "post") {
-      const has = postTitleById.has(job.content_id);
-      const title = postTitleById.get(job.content_id) ?? null;
-      return { ...job, title, content_missing: !has };
+      const post = postDataById.get(job.content_id);
+      return { 
+        ...job, 
+        title: post?.title ?? null, 
+        content_missing: !post,
+        content_status: post?.status ?? null
+      };
     }
 
-    const has = storyTitleById.has(job.content_id);
-    const title = storyTitleById.get(job.content_id) ?? null;
-    return { ...job, title, content_missing: !has };
+    const story = storyDataById.get(job.content_id);
+    return { 
+      ...job, 
+      title: story?.title ?? null, 
+      content_missing: !story,
+      content_status: story?.status ?? null
+    };
   });
 }
 

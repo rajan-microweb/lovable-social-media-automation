@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { AiPromptModal } from "@/components/AiPromptModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,14 +38,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTemplateMutations, useTemplates } from "@/hooks/useTemplates";
+import { usePlatformAccounts } from "@/hooks/usePlatformAccounts";
+import { PlatformAccountSelector } from "@/components/posts/PlatformAccountSelector";
 import type { ContentTemplate, TemplateKind, TemplateSort } from "@/lib/api/templates";
-import { Copy, Edit, MoreVertical, Plus, Search, Trash2 } from "lucide-react";
+import { Copy, Edit, MoreVertical, Plus, Search, Trash2, Facebook, Instagram, Linkedin, Youtube, Twitter, Sparkles, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const postTypes = ["onlyText", "image", "carousel", "video", "shorts", "article", "pdf"];
 const storyTypes = ["image", "video"];
 const defaultPostPlatforms = ["facebook", "instagram", "linkedin", "youtube"];
 const defaultStoryPlatforms = ["facebook", "instagram"];
+
+const PLATFORM_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
+  facebook: { icon: Facebook, color: "text-[#1877F3]", label: "Facebook" },
+  instagram: { icon: Instagram, color: "text-[#E4405F]", label: "Instagram" },
+  linkedin: { icon: Linkedin, color: "text-[#0A66C2]", label: "LinkedIn" },
+  // youtube: { icon: Youtube, color: "text-[#FF0000]", label: "YouTube" },
+  // twitter: { icon: Twitter, color: "text-[#1DA1F2]", label: "X/Twitter" },
+};
 
 const templateSchema = z
   .object({
@@ -108,7 +120,7 @@ function normalizeOverrides(raw: string) {
 
 export default function Templates() {
   const navigate = useNavigate();
-  const { workspaceId } = useAuth();
+  const { user, workspaceId } = useAuth();
 
   const [kindTab, setKindTab] = useState<TemplateKind>("post");
   const [search, setSearch] = useState("");
@@ -125,24 +137,127 @@ export default function Templates() {
   const [formKind, setFormKind] = useState<TemplateKind>("post");
   const [formPostType, setFormPostType] = useState("");
   const [formStoryType, setFormStoryType] = useState("");
-  const [platformsCsv, setPlatformsCsv] = useState("");
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [textContent, setTextContent] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [articleTitle, setArticleTitle] = useState("");
+  const [articleDescription, setArticleDescription] = useState("");
+  const [articleUrl, setArticleUrl] = useState("");
+  const [articleThumbnailUrl, setArticleThumbnailUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
   const [carouselCsv, setCarouselCsv] = useState("");
   const [rawOverrides, setRawOverrides] = useState("{}");
   const [fieldError, setFieldError] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Platform accounts hook
+  const { accounts: platformAccounts, loading: loadingPlatformAccounts } = usePlatformAccounts(user?.id, platforms);
+
+  // Platform connection state
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+  const [showConnectionAlert, setShowConnectionAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertPlatform, setAlertPlatform] = useState("");
+
+  // AI Modal state
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiModalField, setAiModalField] = useState<"text" | "image" | "video" | "pdf">("text");
+  const [aiModalTarget, setAiModalTarget] = useState<string>("");
+  const [openaiConnected, setOpenaiConnected] = useState(false);
 
   const debouncedSearch = useDebouncedValue(search, 300);
   const pageSize = 16;
 
+  // Fetch connected platforms to check for OpenAI
+  useEffect(() => {
+    const fetchConnectedPlatforms = async () => {
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("platform_integrations")
+        .select("platform_name")
+        .eq("user_id", user.id)
+        .eq("status", "active");
+
+      if (data) {
+        const platformNames = data.map((p) => p.platform_name);
+        setConnectedPlatforms(platformNames);
+        setOpenaiConnected(platformNames.some((p) => p.toLowerCase() === "openai"));
+      }
+    };
+    void fetchConnectedPlatforms();
+  }, [user]);
+
+  // Handle platform changes with connection alert
+  const handlePlatformChange = (platform: string, checked: boolean) => {
+    const isConnected = connectedPlatforms.some((p) => p.toLowerCase() === platform.toLowerCase());
+
+    if (checked && !isConnected) {
+      setAlertMessage(`Please connect your ${platform} account first to select this platform.`);
+      setAlertPlatform(platform);
+      setShowConnectionAlert(true);
+      return;
+    }
+
+    if (checked) {
+      setPlatforms([...platforms, platform.toLowerCase()]);
+    } else {
+      setPlatforms(platforms.filter((p) => p !== platform.toLowerCase()));
+    }
+  };
+
+  const handleAccountToggle = (accountId: string) => {
+    if (selectedAccountIds.includes(accountId)) {
+      setSelectedAccountIds(selectedAccountIds.filter((id) => id !== accountId));
+    } else {
+      setSelectedAccountIds([...selectedAccountIds, accountId]);
+    }
+  };
+
+  // Reset selected accounts when platforms change
+  useEffect(() => {
+    if (loadingPlatformAccounts) return;
+    const validAccountIds = selectedAccountIds.filter((id) => platformAccounts.some((account) => account.id === id));
+    if (validAccountIds.length !== selectedAccountIds.length) {
+      setSelectedAccountIds(validAccountIds);
+    }
+  }, [platforms, platformAccounts, loadingPlatformAccounts]);
+
+  // Sync fields to rawOverrides whenever they change
+  useEffect(() => {
+    const current = normalizeOverrides(rawOverrides) || {};
+    const next = {
+      ...current,
+      platforms,
+      selectedAccountIds,
+      textContent,
+      text: textContent,
+      postTitle: title,
+      postDescription: description,
+      imageUrl,
+      videoUrl,
+      pdfUrl,
+      carouselImages: carouselCsv
+        .split(",")
+        .map((u) => u.trim())
+        .filter(Boolean),
+    };
+
+    // Avoid infinite loop by comparing if content actually changed
+    if (JSON.stringify(current) !== JSON.stringify(next)) {
+      setRawOverrides(JSON.stringify(next, null, 2));
+    }
+  }, [platforms, textContent, title, description, articleTitle, articleDescription, articleUrl, articleThumbnailUrl, imageUrl, videoUrl, pdfUrl, carouselCsv]);
+
   const { data, isLoading, isFetching, refetch } = useTemplates({
     workspaceId: workspaceId || undefined,
     kind: kindTab,
-    includeGlobal: true,
+    includeGlobal: false,
     search: debouncedSearch,
     subtype,
     sort,
@@ -175,7 +290,6 @@ export default function Templates() {
     () => ({
       total: totalCount,
       workspaceOnly: allTemplates.filter((t) => t.workspace_id).length,
-      global: allTemplates.filter((t) => !t.workspace_id).length,
     }),
     [allTemplates, totalCount]
   );
@@ -186,10 +300,15 @@ export default function Templates() {
     setFormKind(nextKind);
     setFormPostType(nextKind === "post" ? "onlyText" : "");
     setFormStoryType(nextKind === "story" ? "image" : "");
-    setPlatformsCsv((nextKind === "post" ? defaultPostPlatforms : defaultStoryPlatforms).join(", "));
+    setPlatforms(nextKind === "post" ? defaultPostPlatforms : defaultStoryPlatforms);
+    setSelectedAccountIds([]);
     setTextContent("");
     setTitle("");
     setDescription("");
+    setArticleTitle("");
+    setArticleDescription("");
+    setArticleUrl("");
+    setArticleThumbnailUrl("");
     setImageUrl("");
     setVideoUrl("");
     setPdfUrl("");
@@ -210,10 +329,15 @@ export default function Templates() {
     setFormPostType(template.type_of_post || "");
     setFormStoryType(template.type_of_story || "");
     const overrides = template.overrides || {};
-    setPlatformsCsv(Array.isArray(overrides.platforms) ? overrides.platforms.join(", ") : "");
+    setPlatforms(Array.isArray(overrides.platforms) ? overrides.platforms : []);
+    setSelectedAccountIds(Array.isArray(overrides.selectedAccountIds) ? overrides.selectedAccountIds : []);
     setTextContent(String(overrides.textContent ?? overrides.text ?? ""));
     setTitle(String(overrides.postTitle ?? ""));
     setDescription(String(overrides.postDescription ?? ""));
+    setArticleTitle(String(overrides.articleTitle ?? ""));
+    setArticleDescription(String(overrides.articleDescription ?? ""));
+    setArticleUrl(String(overrides.articleUrl ?? ""));
+    setArticleThumbnailUrl(String(overrides.articleThumbnailUrl ?? ""));
     setImageUrl(String(overrides.imageUrl ?? overrides.image_url ?? ""));
     setVideoUrl(String(overrides.videoUrl ?? overrides.video_url ?? ""));
     setPdfUrl(String(overrides.pdfUrl ?? ""));
@@ -232,14 +356,16 @@ export default function Templates() {
     const fromRaw = normalizeOverrides(rawOverrides);
     if (fromRaw !== null) return fromRaw;
     const fromFields = {
-      platforms: platformsCsv
-        .split(",")
-        .map((p) => p.trim().toLowerCase())
-        .filter(Boolean),
+      platforms: platforms,
+      selectedAccountIds: selectedAccountIds,
       textContent,
       text: textContent,
       postTitle: title,
       postDescription: description,
+      articleTitle,
+      articleDescription,
+      articleUrl,
+      articleThumbnailUrl,
       imageUrl,
       videoUrl,
       pdfUrl,
@@ -249,7 +375,7 @@ export default function Templates() {
         .filter(Boolean),
     };
     return fromFields;
-  }, [carouselCsv, description, imageUrl, pdfUrl, platformsCsv, rawOverrides, textContent, title, videoUrl]);
+  }, [carouselCsv, description, imageUrl, pdfUrl, platforms, selectedAccountIds, rawOverrides, textContent, title, videoUrl, articleTitle, articleDescription, articleUrl, articleThumbnailUrl]);
 
   const handleSave = async () => {
     setFieldError("");
@@ -297,6 +423,68 @@ export default function Templates() {
     }
   };
 
+  const uploadFile = async (file: File, folder: string): Promise<string> => {
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+    const filePath = `${user?.id}/templates/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from("post-media").upload(filePath, file);
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from("post-media").getPublicUrl(filePath);
+    return publicUrl;
+  };
+
+  const handleMediaFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const url = await uploadFile(file, "templates");
+      if (formPostType === "pdf") setPdfUrl(url);
+      else if (formPostType === "video" || formPostType === "shorts" || formStoryType === "video") setVideoUrl(url);
+      else if (formPostType === "article") setArticleThumbnailUrl(url);
+      else setImageUrl(url);
+      toast.success("File uploaded and linked to template");
+    } catch (err) {
+      toast.error("Failed to upload file");
+      console.error(err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openAiModal = (field: "text" | "image" | "video" | "pdf", target: string) => {
+    if (!openaiConnected) {
+      toast.error("Please connect OpenAI in Accounts page first.");
+      return;
+    }
+    setAiModalField(field);
+    setAiModalTarget(target);
+    setAiModalOpen(true);
+  };
+
+  const handleAiGenerate = async (content: string) => {
+    if (aiModalTarget === "textContent") {
+      setTextContent(content);
+    } else if (aiModalTarget === "postTitle") {
+      setTitle(content);
+    } else if (aiModalTarget === "postDescription") {
+      setDescription(content);
+    } else if (aiModalTarget === "articleTitle") {
+      setArticleTitle(content);
+    } else if (aiModalTarget === "articleDescription") {
+      setArticleDescription(content);
+    } else if (aiModalTarget === "media") {
+      if (formPostType === "image" || formStoryType === "image") setImageUrl(content);
+      else if (formPostType === "video" || formPostType === "shorts" || formStoryType === "video") setVideoUrl(content);
+      else if (formPostType === "pdf") setPdfUrl(content);
+      else if (formPostType === "article") setArticleThumbnailUrl(content);
+      toast.success("AI-generated content applied");
+    }
+  };
+
   const handleDuplicate = async (template: ContentTemplate) => {
     try {
       await cloneTemplate.mutateAsync({ template });
@@ -334,7 +522,7 @@ export default function Templates() {
           </Button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <Card>
             <CardContent className="pt-6">
               <p className="text-xs text-muted-foreground">Total Templates</p>
@@ -343,14 +531,8 @@ export default function Templates() {
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-xs text-muted-foreground">Workspace Templates</p>
+              <p className="text-xs text-muted-foreground">Active Templates</p>
               <p className="text-2xl font-semibold">{stats.workspaceOnly}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-xs text-muted-foreground">Global Templates</p>
-              <p className="text-2xl font-semibold">{stats.global}</p>
             </CardContent>
           </Card>
         </div>
@@ -445,26 +627,19 @@ export default function Templates() {
                                 <Copy className="mr-2 h-4 w-4" />
                                 Duplicate
                               </DropdownMenuItem>
-                              {template.workspace_id ? (
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => setTemplateToDelete(template)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem disabled>Global template (read-only)</DropdownMenuItem>
-                              )}
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => setTemplateToDelete(template)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="secondary">{template.kind}</Badge>
                           <Badge variant="outline">{renderType(template)}</Badge>
-                          <Badge variant={template.workspace_id ? "default" : "outline"}>
-                            {template.workspace_id ? "workspace" : "global"}
-                          </Badge>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -584,53 +759,212 @@ export default function Templates() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Platforms (comma separated)</Label>
-                <Input
-                  value={platformsCsv}
-                  onChange={(e) => setPlatformsCsv(e.target.value)}
-                  placeholder="facebook, instagram, linkedin"
-                />
+              <div className="space-y-4">
+                <Label>Platforms</Label>
+                <div className="flex flex-wrap gap-4">
+                  {Object.entries(PLATFORM_CONFIG).map(([id, cfg]) => {
+                    const isSelected = platforms.includes(id);
+                    const Icon = cfg.icon;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => handlePlatformChange(id, !isSelected)}
+                        className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition-all hover:bg-muted/50 w-24 ${
+                          isSelected ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary" : "border-border/50 opacity-60 grayscale-[0.5]"
+                        }`}
+                      >
+                        <div className={`p-1 ${isSelected ? cfg.color : ""}`}>
+                          <Icon className="h-6 w-6" />
+                        </div>
+                        <span className={`text-[10px] font-semibold uppercase tracking-wider ${isSelected ? "text-primary" : "text-muted-foreground"}`}>
+                          {cfg.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Account selectors */}
+                {platforms.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <Label className="text-xs text-muted-foreground">Select Connected Accounts</Label>
+                    <div className="space-y-2">
+                      {platforms.map((platform) => (
+                        <PlatformAccountSelector
+                          key={platform}
+                          accounts={platformAccounts}
+                          selectedAccountIds={selectedAccountIds}
+                          onAccountToggle={handleAccountToggle}
+                          loading={loadingPlatformAccounts}
+                          platform={platform}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Primary Text</Label>
-                <Textarea value={textContent} onChange={(e) => setTextContent(e.target.value)} rows={4} />
-              </div>
+
+              {formKind === "post" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Post Title</Label>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "postTitle")} className="h-7 text-xs gap-1">
+                        <Sparkles className="h-3 w-3" /> AI
+                      </Button>
+                    </div>
+                    <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title of the post..." />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Post Description</Label>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "postDescription")} className="h-7 text-xs gap-1">
+                        <Sparkles className="h-3 w-3" /> AI
+                      </Button>
+                    </div>
+                    <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Subtitle or extra details..." />
+                  </div>
+                </div>
+              )}
+
+              {/* Conditional Fields based on Type */}
+              {(formKind === "post" || formKind === "story") && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Text Content</Label>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "textContent")} className="h-7 text-xs gap-1">
+                      <Sparkles className="h-3 w-3" /> AI Generate
+                    </Button>
+                  </div>
+                  <Textarea value={textContent} onChange={(e) => setTextContent(e.target.value)} rows={4} placeholder="Write your post content..." />
+                </div>
+              )}
+
+              {formKind === "post" && formPostType === "article" && (
+                <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+                  <p className="text-sm font-semibold">Article Details</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Article Title</Label>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "articleTitle")} className="h-7 text-xs gap-1">
+                          <Sparkles className="h-3 w-3" /> AI
+                        </Button>
+                      </div>
+                      <Input value={articleTitle} onChange={(e) => setArticleTitle(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Article Description</Label>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "articleDescription")} className="h-7 text-xs gap-1">
+                          <Sparkles className="h-3 w-3" /> AI
+                        </Button>
+                      </div>
+                      <Input value={articleDescription} onChange={(e) => setArticleDescription(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Article URL</Label>
+                    <Input value={articleUrl} onChange={(e) => setArticleUrl(e.target.value)} placeholder="https://..." />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Article Thumbnail</Label>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("image", "articleThumbnail")} className="h-7 text-xs gap-1">
+                        <Sparkles className="h-3 w-3" /> AI
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input value={articleThumbnailUrl} onChange={(e) => setArticleThumbnailUrl(e.target.value)} placeholder="Image URL..." className="flex-1" />
+                      <div className="relative">
+                        <Button variant="outline" size="sm" asChild className="h-10">
+                          <label className="cursor-pointer">
+                            {uploading ? <Loader2 className="animate-spin h-4 w-4" /> : "Upload"}
+                            <input type="file" className="hidden" accept="image/*" onChange={handleMediaFileChange} disabled={uploading} />
+                          </label>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Title</Label>
-                  <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-                </div>
+                {(formPostType === "image" || formStoryType === "image") && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Image</Label>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("image", "media")} className="h-7 text-xs gap-1">
+                        <Sparkles className="h-3 w-3" /> AI
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Image URL..." className="flex-1" />
+                      <div className="relative">
+                        <Button variant="outline" size="sm" asChild className="h-10">
+                          <label className="cursor-pointer">
+                            {uploading ? <Loader2 className="animate-spin h-4 w-4" /> : "Upload"}
+                            <input type="file" className="hidden" accept="image/*" onChange={handleMediaFileChange} disabled={uploading} />
+                          </label>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {(["video", "shorts"].includes(formPostType) || formStoryType === "video") && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Video</Label>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("video", "media")} className="h-7 text-xs gap-1">
+                        <Sparkles className="h-3 w-3" /> AI
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="Video URL..." className="flex-1" />
+                      <div className="relative">
+                        <Button variant="outline" size="sm" asChild className="h-10">
+                          <label className="cursor-pointer">
+                            {uploading ? <Loader2 className="animate-spin h-4 w-4" /> : "Upload"}
+                            <input type="file" className="hidden" accept="video/*" onChange={handleMediaFileChange} disabled={uploading} />
+                          </label>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Image URL</Label>
-                  <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Video URL</Label>
-                  <Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
-                </div>
-              </div>
+
               {formKind === "post" && (
                 <>
-                  <div className="space-y-2">
-                    <Label>PDF URL</Label>
-                    <Input value={pdfUrl} onChange={(e) => setPdfUrl(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Carousel Images (comma separated URLs)</Label>
-                    <Textarea value={carouselCsv} onChange={(e) => setCarouselCsv(e.target.value)} rows={2} />
-                  </div>
+                  {formPostType === "pdf" && (
+                    <div className="space-y-2">
+                      <Label>PDF</Label>
+                      <div className="flex gap-2">
+                        <Input value={pdfUrl} onChange={(e) => setPdfUrl(e.target.value)} placeholder="PDF URL..." className="flex-1" />
+                        <div className="relative">
+                          <Button variant="outline" size="sm" asChild className="h-10">
+                            <label className="cursor-pointer">
+                              {uploading ? <Loader2 className="animate-spin h-4 w-4" /> : "Upload"}
+                              <input type="file" className="hidden" accept=".pdf" onChange={handleMediaFileChange} disabled={uploading} />
+                            </label>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {formPostType === "carousel" && (
+                    <div className="space-y-2">
+                      <Label>Carousel Images (comma separated URLs)</Label>
+                      <Textarea value={carouselCsv} onChange={(e) => setCarouselCsv(e.target.value)} rows={2} />
+                    </div>
+                  )}
                 </>
               )}
+
               <div className="space-y-2">
-                <Label>Overrides JSON</Label>
-                <Textarea value={rawOverrides} onChange={(e) => setRawOverrides(e.target.value)} rows={10} className="font-mono text-xs" />
+                <Label>Overrides JSON (Advanced)</Label>
+                <Textarea value={rawOverrides} onChange={(e) => setRawOverrides(e.target.value)} rows={6} className="font-mono text-xs opacity-80" />
               </div>
               {fieldError ? <p className="text-sm text-destructive">{fieldError}</p> : null}
             </div>
@@ -673,12 +1007,40 @@ export default function Templates() {
             <Button variant="outline" onClick={() => setIsEditorOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saveTemplate.isPending}>
+            <Button onClick={handleSave} disabled={saveTemplate.isPending || uploading}>
               {saveTemplate.isPending ? "Saving..." : "Save Template"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Platform Not Connected</AlertDialogTitle>
+            <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
+            <AlertDialogAction onClick={() => setShowConnectionAlert(false)}>Cancel</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AiPromptModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onGenerate={handleAiGenerate}
+        fieldType={aiModalField}
+        context={{
+          userId: user?.id,
+          platforms: platforms,
+          typeOfPost: formKind === "post" ? formPostType : formStoryType,
+          existingImageUrl: imageUrl,
+          existingVideoUrl: videoUrl,
+          existingTextContent: textContent,
+        }}
+      />
 
       <AlertDialog open={Boolean(templateToDelete)} onOpenChange={(open) => !open && setTemplateToDelete(null)}>
         <AlertDialogContent>
