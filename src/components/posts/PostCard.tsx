@@ -38,6 +38,7 @@ import {
   Instagram,
   Youtube,
   Twitter,
+  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -255,27 +256,50 @@ export function PostCard({ post, isSelected, onToggleSelect, onDelete, publishJo
               ? `Published: ${format(new Date(post.published_at), "MMM d, yyyy")}` 
               : format(new Date(post.created_at), "MMM d, yyyy")}
           </span>
-          <div className="flex gap-1">
-            {post.status === "published" && post.url && (
+          <div className="flex gap-1 flex-wrap justify-end">
+            {post.status === "published" && (
+              <>
+                {/* Individual Platform Buttons */}
+                {post.url?.startsWith('{') ? (() => {
+                  try {
+                    const urls = JSON.parse(post.url);
+                    return Object.entries(urls).map(([platform, url]) => (
+                      <Button
+                        key={platform}
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-[9px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5 capitalize"
+                        onClick={() => window.open(url as string, "_blank")}
+                      >
+                        {platform}
+                        <ExternalLink className="h-3 w-3" />
+                      </Button>
+                    ));
+                  } catch (e) { return null; }
+                })() : post.url && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2.5 text-[10px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5"
+                    onClick={() => window.open(post.url!, "_blank")}
+                  >
+                    Live View
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                )}
+              </>
+            )}
+            {post.status !== "published" && (
               <Button
                 size="sm"
-                variant="outline"
-                className="h-7 px-2.5 text-[10px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5"
-                onClick={() => window.open(post.url!, "_blank")}
+                variant="ghost"
+                className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+                onClick={() => navigate(`/posts/${post.id}/edit`)}
+                aria-label={`Edit post ${post.title || ""}`.trim()}
               >
-                <div className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
-                Live
+                <Edit className="h-3.5 w-3.5" />
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
-              onClick={() => navigate(`/posts/${post.id}/edit`)}
-              aria-label={`Edit post ${post.title || ""}`.trim()}
-            >
-              <Edit className="h-3.5 w-3.5" />
-            </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button

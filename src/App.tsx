@@ -18,7 +18,6 @@ import Calendar from "./pages/Calendar";
 import AdminUsers from "./pages/AdminUsers";
 import Accounts from "./pages/Accounts";
 import Profile from "./pages/Profile";
-import Queue from "./pages/Queue";
 import Library from "./pages/Library";
 import Analytics from "./pages/Analytics";
 import Approvals from "./pages/Approvals";
@@ -111,14 +110,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/queue"
-              element={
-                <ProtectedRoute>
-                  <Queue />
-                </ProtectedRoute>
-              }
-            />
+
             <Route
               path="/library"
               element={

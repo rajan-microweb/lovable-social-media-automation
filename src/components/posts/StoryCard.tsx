@@ -15,7 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, ExternalLink } from "lucide-react";
 import type { Story } from "@/types/story";
 import type { PublishJobState } from "@/lib/publishing/statusPipeline";
 import { getContentPipelineState, getContentPipelineStateUI } from "@/lib/publishing/statusPipeline";
@@ -109,25 +109,47 @@ export function StoryCard({ story, isSelected, onToggleSelect, onDelete, publish
           </p>
         )}
 
-        <div className="flex gap-2 pt-2">
-          {story.status === "published" && story.url && (
+        <div className="flex gap-2 pt-2 flex-wrap">
+          {story.status === "published" && (
+            <>
+              {story.url?.startsWith('{') ? (() => {
+                try {
+                  const urls = JSON.parse(story.url);
+                  return Object.entries(urls).map(([platform, url]) => (
+                    <Button
+                      key={platform}
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2.5 text-[9px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5 capitalize"
+                      onClick={() => window.open(url as string, "_blank")}
+                    >
+                      {platform}
+                      <ExternalLink className="h-3 w-3" />
+                    </Button>
+                  ));
+                } catch (e) { return null; }
+              })() : story.url && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2.5 text-[10px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5"
+                  onClick={() => window.open(story.url!, "_blank")}
+                >
+                  Live View
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              )}
+            </>
+          )}
+          {story.status !== "published" && (
             <Button
               size="sm"
               variant="outline"
-              className="h-7 px-2.5 text-[10px] font-bold bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20 hover:text-green-700 transition-all gap-1.5"
-              onClick={() => window.open(story.url!, "_blank")}
+              onClick={() => navigate(`/stories/${story.id}/edit`)}
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
-              Live
+              <Edit className="h-3 w-3" />
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => navigate(`/stories/${story.id}/edit`)}
-          >
-            <Edit className="h-3 w-3" />
-          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button

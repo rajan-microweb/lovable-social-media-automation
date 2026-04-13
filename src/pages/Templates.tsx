@@ -41,7 +41,7 @@ import { useTemplateMutations, useTemplates } from "@/hooks/useTemplates";
 import { usePlatformAccounts } from "@/hooks/usePlatformAccounts";
 import { PlatformAccountSelector } from "@/components/posts/PlatformAccountSelector";
 import type { ContentTemplate, TemplateKind, TemplateSort } from "@/lib/api/templates";
-import { Copy, Edit, MoreVertical, Plus, Search, Trash2, Facebook, Instagram, Linkedin, Youtube, Twitter, Sparkles, Loader2 } from "lucide-react";
+import { Copy, Edit, MoreVertical, Plus, Search, Trash2, Facebook, Instagram, Linkedin, Youtube, Twitter, Sparkles, Loader2, LayoutGrid, List as ListIcon, Edit2, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const postTypes = ["onlyText", "image", "carousel", "video", "shorts", "article", "pdf"];
@@ -132,6 +132,7 @@ export default function Templates() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ContentTemplate | null>(null);
   const [templateToDelete, setTemplateToDelete] = useState<ContentTemplate | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const [formName, setFormName] = useState("");
   const [formKind, setFormKind] = useState<TemplateKind>("post");
@@ -277,15 +278,10 @@ export default function Templates() {
   useEffect(() => {
     if (!data) return;
     setTotalCount(data.total);
-    setAllTemplates((prev) => {
-      const merged = page === 0 ? data.items : [...prev, ...data.items];
-      const deduped = new Map<string, ContentTemplate>();
-      for (const item of merged) {
-        deduped.set(item.id, item);
-      }
-      return Array.from(deduped.values());
-    });
+    setAllTemplates(data.items);
   }, [data, page]);
+
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   const hasMore = allTemplates.length < totalCount;
   const stats = useMemo(
@@ -518,10 +514,30 @@ export default function Templates() {
             <h1 className="text-3xl font-bold">Templates</h1>
             <p className="text-muted-foreground">Create and manage reusable structures for faster post and story creation.</p>
           </div>
-          <Button onClick={openCreateModal}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Template
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-muted/40 p-1 rounded-xl border border-border/50 mr-2">
+              <Button
+                variant={viewMode === "grid" ? "secondary" : "ghost"}
+                size="icon"
+                className={`h-8 w-8 rounded-lg transition-all ${viewMode === "grid" ? "shadow-sm bg-background" : "opacity-40"}`}
+                onClick={() => setViewMode("grid")}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+                size="icon"
+                className={`h-8 w-8 rounded-lg transition-all ${viewMode === "list" ? "shadow-sm bg-background" : "opacity-40"}`}
+                onClick={() => setViewMode("list")}
+              >
+                <ListIcon className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button onClick={openCreateModal}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Template
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -600,6 +616,91 @@ export default function Templates() {
                   <p className="text-sm text-muted-foreground">No templates found. Create your first template to speed up publishing.</p>
                 </CardContent>
               </Card>
+            ) : viewMode === "list" ? (
+              <div className="mt-4 overflow-hidden rounded-xl border border-border/40 bg-card">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-muted-foreground border-b border-border/40 bg-muted/5">
+                        <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40">Template Name</th>
+                        <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-center">Subtype</th>
+                        <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-center">Platforms</th>
+                        <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-right">Last Updated</th>
+                        <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/20">
+                      {allTemplates.map((template) => {
+                        const overrides = template.overrides || {};
+                        const platformsArr = Array.isArray(overrides.platforms) ? overrides.platforms : [];
+                        
+                        return (
+                          <tr key={template.id} className="group hover:bg-muted/5 transition-colors">
+                            <td className="py-4 px-4">
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                                  {template.template_name}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground opacity-60">ID: {template.id.slice(-8)}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                               <Badge variant="secondary" className="text-[10px] h-5 font-bold uppercase px-2 bg-muted/50 border-transparent">
+                                 {renderType(template)}
+                               </Badge>
+                            </td>
+                            <td className="py-4 px-4">
+                               <div className="flex items-center justify-center gap-1">
+                                  {platformsArr.map((p: string) => {
+                                    const cfg = PLATFORM_CONFIG[p];
+                                    if (!cfg) return null;
+                                    const Icon = cfg.icon;
+                                    return <Icon key={p} className={`h-3 w-3 ${cfg.color}`} />;
+                                  })}
+                               </div>
+                            </td>
+                            <td className="py-4 px-4 text-right">
+                               <span className="font-medium text-xs text-muted-foreground">
+                                 {new Date(template.updated_at).toLocaleDateString()}
+                               </span>
+                            </td>
+                            <td className="py-4 px-4 text-right">
+                               <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEditModal(template)}>
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button 
+                                    size="icon" 
+                                    variant="ghost" 
+                                    className="h-8 w-8 text-primary" 
+                                    onClick={() => navigate(template.kind === "post" ? "/posts/create" : "/stories/create", { state: { templateIdToApply: template.id } })}
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Button>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                                        <MoreVertical className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => handleDuplicate(template)}>
+                                        <Copy className="mr-2 h-4 w-4" /> Duplicate
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem className="text-destructive font-bold" onClick={() => setTemplateToDelete(template)}>
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                               </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 mt-4">
                 {allTemplates.map((template) => {
@@ -682,15 +783,60 @@ export default function Templates() {
               </div>
             )}
 
-            <div className="mt-5 flex justify-center">
-              {hasMore ? (
-                <Button variant="outline" disabled={isFetching} onClick={() => setPage((prev) => prev + 1)}>
-                  {isFetching ? "Loading..." : "Load More"}
-                </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">All templates loaded.</p>
-              )}
-            </div>
+            {/* Pagination UI */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-8 border-t border-border/10 pt-6">
+                <p className="text-xs text-muted-foreground">
+                  Showing <span className="font-semibold text-foreground">{page * pageSize + 1}</span> to <span className="font-semibold text-foreground">{Math.min((page + 1) * pageSize, totalCount)}</span> of <span className="font-semibold text-foreground">{totalCount}</span> results
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg"
+                    onClick={() => setPage(prev => Math.max(0, prev - 1))}
+                    disabled={page === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum = i;
+                      if (totalPages > 5 && page > 2) {
+                         pageNum = page - 2 + i;
+                         if (pageNum + 2 > totalPages) pageNum = totalPages - 5 + i;
+                      }
+                      if (pageNum < 0) pageNum = i;
+                      if (pageNum >= totalPages) return null;
+                      
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={page === pageNum ? "secondary" : "ghost"}
+                          size="sm"
+                          className={`h-8 w-8 rounded-lg font-bold text-xs ${page === pageNum ? 'bg-primary/10 text-primary hover:bg-primary/20' : ''}`}
+                          onClick={() => setPage(pageNum)}
+                        >
+                          {pageNum + 1}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg"
+                    onClick={() => setPage(prev => Math.min(totalPages - 1, prev + 1))}
+                    disabled={page >= totalPages - 1}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
           </TabsContent>
         </Tabs>
       </div>

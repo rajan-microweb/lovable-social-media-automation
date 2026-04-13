@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FilterBar } from "@/components/posts/FilterBar";
 import { BulkActionToolbar } from "@/components/posts/BulkActionToolbar";
 import { SortDropdown, type SortField, type SortOrder } from "@/components/posts/SortDropdown";
+import { LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Post } from "@/types/post";
 import type { Story } from "@/types/story";
 import {
@@ -203,6 +204,138 @@ function compareRows(a: ContentRow, b: ContentRow, sortBy: SortField, sortOrder:
   return sortOrder === "asc" ? comparison : -comparison;
 }
 
+import { Checkbox } from "@/components/ui/checkbox";
+import { format, parseISO } from "date-fns";
+import { MoreVertical, Trash2, Edit2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+function ContentTable({ 
+  rows, 
+  selectedKeys, 
+  toggleSelection, 
+  selectAllVisible, 
+  clearSelection,
+  onDeletePost,
+  onDeleteStory,
+  navigate
+}: {
+  rows: ContentRow[];
+  selectedKeys: Set<string>;
+  toggleSelection: (kind: "post" | "story", id: string) => void;
+  selectAllVisible: () => void;
+  clearSelection: () => void;
+  onDeletePost: (id: string) => void;
+  onDeleteStory: (id: string) => void;
+  navigate: (path: string) => void;
+}) {
+  const allSelected = rows.length > 0 && Array.from(rows).every(r => selectedKeys.has(makeContentKey(r.kind, r.id)));
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/40 bg-card">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground border-b border-border/40 bg-muted/5">
+              <th className="h-10 px-4 w-10 text-center">
+                 <Checkbox 
+                    checked={allSelected} 
+                    onCheckedChange={(checked) => checked ? selectAllVisible() : clearSelection()}
+                    className="border-muted-foreground/30 data-[state=checked]:bg-primary h-4 w-4 rounded-[4px]"
+                 />
+              </th>
+              <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40">Details</th>
+              <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-center">Type</th>
+              <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-center">Status</th>
+              <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-right">Date</th>
+              <th className="font-semibold h-10 px-4 text-[10px] uppercase tracking-widest text-muted-foreground/40 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/20">
+            {rows.map((row) => {
+              const item = row.kind === "post" ? row.post : row.story;
+              const isSelected = selectedKeys.has(makeContentKey(row.kind, row.id));
+              const dateVal = item.scheduled_at || item.created_at;
+
+              return (
+                <tr key={makeContentKey(row.kind, row.id)} className={`group hover:bg-muted/5 transition-colors ${isSelected ? 'bg-primary/[0.03]' : ''}`}>
+                   <td className="py-4 px-4 w-10 text-center">
+                      <Checkbox 
+                         checked={isSelected} 
+                         onCheckedChange={() => toggleSelection(row.kind, row.id)}
+                         className="border-muted-foreground/20 data-[state=checked]:bg-primary h-4 w-4 rounded-[4px]"
+                      />
+                   </td>
+                   <td className="py-4 px-4">
+                     <div className="flex flex-col">
+                       <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                         {item.title || "(No Title)"}
+                       </span>
+                       {item.text && (
+                         <span className="text-xs text-muted-foreground line-clamp-1 opacity-60">
+                           {item.text}
+                         </span>
+                       )}
+                     </div>
+                   </td>
+                   <td className="py-4 px-4 text-center">
+                      <Badge variant="secondary" className="text-[10px] h-5 font-bold uppercase tracking-tight px-2 bg-muted/50 border-transparent">
+                        {row.kind}
+                      </Badge>
+                   </td>
+                   <td className="py-4 px-4 text-center">
+                      <Badge variant="outline" className="text-[9px] h-5 font-bold uppercase tracking-tight px-2 border-primary/20 text-primary bg-primary/5">
+                        {item.status}
+                      </Badge>
+                   </td>
+                   <td className="py-4 px-4 text-right">
+                     <div className="flex flex-col items-end">
+                       <span className="font-bold text-sm tracking-tight">{dateVal ? format(parseISO(dateVal), "MMM d") : "-"}</span>
+                       <span className="text-[10px] opacity-40 font-medium">{dateVal ? format(parseISO(dateVal), "HH:mm") : ""}</span>
+                     </div>
+                   </td>
+                   <td className="py-4 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <Button
+                           size="icon"
+                           variant="ghost"
+                           className="h-8 w-8 text-muted-foreground hover:text-primary"
+                           onClick={() => navigate(`/${row.kind}s/${row.id}/edit`)}
+                           disabled={item.status === 'published'}
+                         >
+                           <Edit2 className="h-4 w-4" />
+                         </Button>
+                         <DropdownMenu>
+                           <DropdownMenuTrigger asChild>
+                             <Button variant="ghost" size="icon" className="h-8 w-8">
+                               <MoreVertical className="h-4 w-4" />
+                             </Button>
+                           </DropdownMenuTrigger>
+                           <DropdownMenuContent align="end">
+                             <DropdownMenuItem 
+                               className="text-destructive font-bold text-xs" 
+                               onClick={() => row.kind === "post" ? onDeletePost(row.id) : onDeleteStory(row.id)}
+                             >
+                               <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                             </DropdownMenuItem>
+                           </DropdownMenuContent>
+                         </DropdownMenu>
+                      </div>
+                   </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function ContentView({
   initialMode,
   initialStatus,
@@ -237,6 +370,9 @@ export function ContentView({
   // Sort state
   const [sortBy, setSortBy] = useState<SortField>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
 
   const clearFilters = () => {
     setSearchTerm("");
@@ -308,6 +444,10 @@ export function ContentView({
     });
   }, [stories, searchTerm, statusFilter, platformFilter, dateRange, sortBy, sortOrder]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [mode, searchTerm, statusFilter, platformFilter, dateRange, sortBy, sortOrder]);
+
   const rows = useMemo(() => {
     const postRows: ContentRow[] = filteredPosts.map((post) => ({
       kind: "post",
@@ -328,12 +468,17 @@ export function ContentView({
     return merged.slice().sort((a, b) => compareRows(a, b, sortBy, sortOrder));
   }, [mode, filteredPosts, filteredStories, sortBy, sortOrder]);
 
-  const groupedRows = useMemo(() => {
+  const totalPages = Math.ceil(rows.length / itemsPerPage);
+  const paginatedRows = useMemo(() => {
+    return rows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [rows, currentPage, itemsPerPage]);
+
+  const paginatedGroupedRows = useMemo(() => {
     return {
-      remaining: rows.filter((r) => (r.kind === "post" ? r.post.status : r.story.status) !== "published"),
-      published: rows.filter((r) => (r.kind === "post" ? r.post.status : r.story.status) === "published"),
+      remaining: paginatedRows.filter((r) => (r.kind === "post" ? r.post.status : r.story.status) !== "published"),
+      published: paginatedRows.filter((r) => (r.kind === "post" ? r.post.status : r.story.status) === "published"),
     };
-  }, [rows]);
+  }, [paginatedRows]);
 
   const visibleKeySet = useMemo(() => {
     return new Set(rows.map((r) => makeContentKey(r.kind, r.id)));
@@ -652,6 +797,25 @@ export function ContentView({
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="flex items-center bg-muted/40 p-1 rounded-xl border border-border/50 mr-2">
+              <Button
+                variant={viewMode === "grid" ? "secondary" : "ghost"}
+                size="icon"
+                className={`h-8 w-8 rounded-lg transition-all ${viewMode === "grid" ? "shadow-sm bg-background" : "opacity-40"}`}
+                onClick={() => setViewMode("grid")}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+                size="icon"
+                className={`h-8 w-8 rounded-lg transition-all ${viewMode === "list" ? "shadow-sm bg-background" : "opacity-40"}`}
+                onClick={() => setViewMode("list")}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
+
             {showModeTabs && (
               <Tabs
                 value={mode}
@@ -782,18 +946,29 @@ export function ContentView({
               </div>
             </CardContent>
           </Card>
+        ) : viewMode === "list" ? (
+           <ContentTable
+             rows={paginatedRows}
+             selectedKeys={selectedKeys}
+             toggleSelection={toggleSelection}
+             selectAllVisible={selectAllVisible}
+             clearSelection={clearSelection}
+             onDeletePost={handleDeletePost}
+             onDeleteStory={handleDeleteStory}
+             navigate={navigate}
+           />
         ) : (
           <div className="space-y-12">
-            {groupedRows.remaining.length > 0 && (
+            {paginatedGroupedRows.remaining.length > 0 && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 border-l-4 border-primary pl-4">
                   <h2 className="text-xl font-bold tracking-tight">Remaining Content</h2>
                   <Badge variant="secondary" className="rounded-full px-2.5">
-                    {groupedRows.remaining.length}
+                    {paginatedGroupedRows.remaining.length}
                   </Badge>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {groupedRows.remaining.map((row) => {
+                  {paginatedGroupedRows.remaining.map((row) => {
                     const content =
                       row.kind === "post"
                         ? ({ ...row.post, kind: "post" } as const)
@@ -814,16 +989,16 @@ export function ContentView({
               </div>
             )}
 
-            {groupedRows.published.length > 0 && (
+            {paginatedGroupedRows.published.length > 0 && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 border-l-4 border-green-500 pl-4">
                   <h2 className="text-xl font-bold tracking-tight text-green-600">Published Content</h2>
                   <Badge variant="outline" className="rounded-full px-2.5 bg-green-50 text-green-600 border-green-200">
-                    {groupedRows.published.length}
+                    {paginatedGroupedRows.published.length}
                   </Badge>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 opacity-95">
-                  {groupedRows.published.map((row) => {
+                  {paginatedGroupedRows.published.map((row) => {
                     const content =
                       row.kind === "post"
                         ? ({ ...row.post, kind: "post" } as const)
@@ -843,6 +1018,58 @@ export function ContentView({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-between border-t border-border/10 pt-6">
+            <p className="text-xs text-muted-foreground">
+              Showing <span className="font-semibold text-foreground">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-semibold text-foreground">{Math.min(currentPage * itemsPerPage, rows.length)}</span> of <span className="font-semibold text-foreground">{rows.length}</span> results
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-lg"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum = i + 1;
+                  if (totalPages > 5 && currentPage > 3) {
+                     pageNum = currentPage - 2 + i;
+                     if (pageNum + 2 > totalPages) pageNum = totalPages - 4 + i;
+                  }
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "secondary" : "ghost"}
+                      size="sm"
+                      className={`h-8 w-8 rounded-lg font-bold text-xs ${currentPage === pageNum ? 'bg-primary/10 text-primary' : ''}`}
+                      onClick={() => setCurrentPage(pageNum)}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-lg"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
       </div>

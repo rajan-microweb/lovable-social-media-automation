@@ -17,6 +17,10 @@ export type PublishJobView = PublishJobRow & {
   title?: string | null;
   content_missing?: boolean;
   content_status?: string | null;
+  platforms?: string[] | null;
+  published_at?: string | null;
+  content_metadata?: any | null;
+  url?: string | null;
 };
 
 export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise<PublishJobView[]> {
@@ -35,10 +39,10 @@ export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise
 
   const [{ data: posts }, { data: stories }] = await Promise.all([
     postIds.length
-      ? supabase.from("posts").select("id, title, status").in("id", postIds)
+      ? supabase.from("posts").select("id, title, status, platforms, published_at, metadata, url").in("id", postIds)
       : Promise.resolve({ data: [] }),
     storyIds.length
-      ? supabase.from("stories").select("id, title, status").in("id", storyIds)
+      ? supabase.from("stories").select("id, title, status, platforms, published_at, url").in("id", storyIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -52,7 +56,11 @@ export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise
         ...job, 
         title: post?.title ?? null, 
         content_missing: !post,
-        content_status: post?.status ?? null
+        content_status: post?.status ?? null,
+        platforms: post?.platforms ?? null,
+        published_at: post?.published_at ?? null,
+        content_metadata: post?.metadata ?? null,
+        url: post?.url ?? null
       };
     }
 
@@ -61,7 +69,10 @@ export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise
       ...job, 
       title: story?.title ?? null, 
       content_missing: !story,
-      content_status: story?.status ?? null
+      content_status: story?.status ?? null,
+      platforms: story?.platforms ?? null,
+      published_at: story?.published_at ?? null,
+      url: story?.url ?? null
     };
   });
 }

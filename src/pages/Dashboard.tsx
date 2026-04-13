@@ -16,11 +16,11 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
-import { QueuePanel } from "@/pages/Queue";
 import { AnalyticsPanel } from "@/pages/Analytics";
 import { 
   FileText, 
   Calendar, 
+  History,
   CheckCircle2, 
   PlusCircle, 
   Users, 
@@ -37,6 +37,7 @@ import {
   Images as ImagesIcon,
   LayoutTemplate,
   Settings as SettingsIcon,
+  History as HistoryIcon,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { SOCIAL_STATUS_PUBLISHED, SOCIAL_STATUS_SCHEDULED } from "@/types/social";
@@ -55,7 +56,7 @@ interface Stats {
   failedJobs: number;
 }
 
-type DashboardTab = "overview" | "queue" | "analytics";
+type DashboardTab = "overview" | "analytics";
 
 interface BaseQuickAction {
   title: string;
@@ -313,11 +314,11 @@ export default function Dashboard() {
       gradient: "from-chart-4 to-chart-3",
     },
     {
-      title: "Queue",
-      description: "View publishing jobs and retry failures",
-      icon: RotateCcw,
-      kind: "tab",
-      tab: "queue",
+      title: "History",
+      description: "View published posts and failed attempts",
+      icon: History,
+      kind: "navigate",
+      path: "/history",
       gradient: "from-chart-4 to-chart-5",
     },
     {
@@ -420,14 +421,7 @@ export default function Dashboard() {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
           <TabsList className="w-full sm:w-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="queue">
-              Queue
-              {stats.failedJobs > 0 ? (
-                <Badge variant="destructive" className="ml-2">
-                  {stats.failedJobs}
-                </Badge>
-              ) : null}
-            </TabsTrigger>
+
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
 
@@ -499,9 +493,7 @@ export default function Dashboard() {
             </div>
           </TabsContent>
 
-          <TabsContent value="queue" className="pt-6">
-            <QueuePanel />
-          </TabsContent>
+
 
           <TabsContent value="analytics" className="pt-6">
             <AnalyticsPanel />
@@ -524,16 +516,7 @@ export default function Dashboard() {
                 Overview
                 <CommandShortcut>↵</CommandShortcut>
               </CommandItem>
-              <CommandItem
-                value="Queue"
-                onSelect={() => {
-                  setActiveTab("queue");
-                  setCommandOpen(false);
-                }}
-              >
-                Queue
-                <CommandShortcut>↵</CommandShortcut>
-              </CommandItem>
+
               <CommandItem
                 value="Analytics"
                 onSelect={() => {

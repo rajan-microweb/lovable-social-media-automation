@@ -35,7 +35,6 @@ const storySchema = z.object({
   type_of_story: z.string().min(1, "Type of story is required"),
   platforms: z.array(z.string()).min(1, "At least one platform is required"),
   account_type: z.string().optional(),
-  text: z.string().optional(),
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   scheduled_at: z.string().optional(),
@@ -169,8 +168,6 @@ export default function CreateStory() {
         : []
     );
     setSelectedAccountIds(Array.isArray(overrides.selectedAccountIds) ? overrides.selectedAccountIds : []);
-
-    setText(overrides.textContent ?? overrides.text ?? "");
     setImageUrl(overrides.imageUrl ?? overrides.image_url ?? "");
     setVideoUrl(overrides.videoUrl ?? overrides.video_url ?? "");
     setMediaFile(null);
@@ -335,7 +332,6 @@ export default function CreateStory() {
         type_of_story: typeOfStory,
         platforms,
         account_type: accountTypeValue || undefined,
-        text: text || undefined,
         image: uploadedImageUrl || "",
         video: uploadedVideoUrl || "",
         scheduled_at: formattedScheduledAt,
@@ -353,7 +349,6 @@ export default function CreateStory() {
         type_of_story: storyData.type_of_story,
         platforms: storyData.platforms,
         account_type: storyData.account_type ?? null,
-        text: storyData.text ?? null,
         image: storyData.image || null,
         video: storyData.video || null,
         scheduled_at: storyData.scheduled_at ?? null,
@@ -707,7 +702,6 @@ export default function CreateStory() {
           typeOfPost: typeOfStory,
           existingImageUrl: imageUrl || (mediaFile && typeOfStory === "image" ? URL.createObjectURL(mediaFile) : ""),
           existingVideoUrl: videoUrl || (mediaFile && typeOfStory === "video" ? URL.createObjectURL(mediaFile) : ""),
-          existingTextContent: "",
         }}
       />
 

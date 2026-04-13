@@ -168,6 +168,13 @@ export default function EditPost() {
         if (meta.title) setArticleTitle(meta.title);
         if (meta.description) setArticleDescription(meta.description);
       }
+
+      if (data.status === "published") {
+        toast.error("Published posts cannot be edited");
+        navigate("/posts");
+        return;
+      }
+
       setStatus(data.status);
 
       // Convert UTC datetime to local timezone for datetime-local input

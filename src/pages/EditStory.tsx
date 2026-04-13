@@ -34,7 +34,6 @@ const storySchema = z.object({
   type_of_story: z.string().min(1, "Type of story is required"),
   platforms: z.array(z.string()).min(1, "At least one platform is required"),
   account_type: z.string().optional(),
-  text: z.string().optional(),
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   scheduled_at: z.string().optional(),
@@ -68,7 +67,7 @@ export default function EditStory() {
 
   // AI Modal state
   const [aiModalOpen, setAiModalOpen] = useState(false);
-  const [aiModalField, setAiModalField] = useState<"text" | "image" | "video">("text");
+  const [aiModalField, setAiModalField] = useState<"image" | "video">("image");
   const [aiModalTarget, setAiModalTarget] = useState<string>("");
 
   // AI-generated URLs
@@ -130,8 +129,12 @@ export default function EditStory() {
         // Normalize platforms to lowercase
         const normalizedPlatforms = (data.platforms || []).map((p: string) => p.toLowerCase());
         setPlatforms(normalizedPlatforms);
-        setText(data.text || "");
         setStatus(data.status || "draft");
+        if (data.status === "published") {
+          toast.error("Published stories cannot be edited");
+          navigate("/stories");
+          return;
+        }
         if (data.image) setExistingMediaUrl(data.image);
         if (data.video) setExistingMediaUrl(data.video);
         
@@ -215,7 +218,7 @@ export default function EditStory() {
     }
   };
 
-  const openAiModal = (field: "text" | "image" | "video", target: string) => {
+  const openAiModal = (field: "image" | "video", target: string) => {
     if (!openaiConnected) {
       setShowOpenAIAlert(true);
       return;
@@ -305,7 +308,6 @@ export default function EditStory() {
         type_of_story: typeOfStory,
         platforms,
         account_type: accountTypeValue || undefined,
-        text: text || undefined,
         image: typeOfStory === "image" ? uploadedImageUrl || "" : "",
         video: typeOfStory === "video" ? uploadedVideoUrl || "" : "",
         scheduled_at: formattedScheduledAt,
@@ -324,7 +326,6 @@ export default function EditStory() {
           type_of_story: storyData.type_of_story,
           platforms: storyData.platforms,
           account_type: storyData.account_type ?? null,
-          text: storyData.text ?? null,
           image: storyData.image || null,
           video: storyData.video || null,
           scheduled_at: storyData.scheduled_at ?? null,

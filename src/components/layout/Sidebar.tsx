@@ -6,7 +6,6 @@ import {
   Users,
   LogOut,
   CalendarDays,
-  ClipboardList,
   Images,
   BarChart3,
   CheckSquare,
@@ -48,7 +47,6 @@ export function AppSidebar() {
   };
 
   const publishItems = [
-    { title: "Queue", url: "/queue", icon: ClipboardList },
     { title: "History", url: "/history", icon: History },
     approvalsEnabled ? { title: "Approvals", url: "/approvals", icon: CheckSquare } : null,
   ].filter(Boolean) as SectionItem[];
