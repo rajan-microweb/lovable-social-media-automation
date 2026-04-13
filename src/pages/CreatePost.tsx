@@ -184,6 +184,7 @@ export default function CreatePost() {
 
   // Reset form when type changes
   useEffect(() => {
+    if (pendingTemplate) return;
     if (typeOfPost) {
       // Update available platforms
       setAvailablePlatforms(PLATFORM_MAP[typeOfPost] || []);
@@ -287,6 +288,7 @@ export default function CreatePost() {
     toast.warning("Previously selected template was removed.");
   }, [selectedTemplateId, templates, templatesFetching, templatesLoading]);
 
+  /* 
   // Reset selected accounts when platforms change (but only when accounts have loaded)
   useEffect(() => {
     if (loadingPlatformAccounts) return; // Don't filter while loading
@@ -296,6 +298,7 @@ export default function CreatePost() {
       setSelectedAccountIds(validAccountIds);
     }
   }, [platforms, platformAccounts, loadingPlatformAccounts]);
+  */
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     // Check if platform is connected before allowing selection (case-insensitive)

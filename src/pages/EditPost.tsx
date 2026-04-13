@@ -234,6 +234,7 @@ export default function EditPost() {
     }
   }, [typeOfPost]);
 
+  /* 
   // Reset selected accounts when platforms change (but only when accounts have loaded)
   useEffect(() => {
     if (loadingPlatformAccounts) return; // Don't filter while loading
@@ -243,6 +244,7 @@ export default function EditPost() {
       setSelectedAccountIds(validAccountIds);
     }
   }, [platforms, platformAccounts, loadingPlatformAccounts]);
+  */
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     // Check if platform is connected before allowing selection (case-insensitive)

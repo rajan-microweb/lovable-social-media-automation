@@ -219,7 +219,8 @@ export default function Templates() {
     }
   };
 
-  // Reset selected accounts when platforms change
+  /* 
+  // Temporarily disabled auto-reset to avoid losing data during mount/load
   useEffect(() => {
     if (loadingPlatformAccounts) return;
     const validAccountIds = selectedAccountIds.filter((id) => platformAccounts.some((account) => account.id === id));
@@ -227,6 +228,7 @@ export default function Templates() {
       setSelectedAccountIds(validAccountIds);
     }
   }, [platforms, platformAccounts, loadingPlatformAccounts]);
+  */
 
   // Sync fields to rawOverrides whenever they change
   useEffect(() => {
@@ -252,7 +254,7 @@ export default function Templates() {
     if (JSON.stringify(current) !== JSON.stringify(next)) {
       setRawOverrides(JSON.stringify(next, null, 2));
     }
-  }, [platforms, textContent, title, description, articleTitle, articleDescription, articleUrl, articleThumbnailUrl, imageUrl, videoUrl, pdfUrl, carouselCsv]);
+  }, [platforms, selectedAccountIds, textContent, title, description, articleTitle, articleDescription, articleUrl, articleThumbnailUrl, imageUrl, videoUrl, pdfUrl, carouselCsv]);
 
   const { data, isLoading, isFetching, refetch } = useTemplates({
     workspaceId: workspaceId || undefined,
@@ -829,7 +831,7 @@ export default function Templates() {
               )}
 
               {/* Conditional Fields based on Type */}
-              {(formKind === "post" || formKind === "story") && (
+              {formKind === "post" && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Text Content</Label>
@@ -981,10 +983,12 @@ export default function Templates() {
                 {previewOverrides.postDescription ? (
                   <p className="text-sm text-muted-foreground">{String(previewOverrides.postDescription)}</p>
                 ) : null}
-                {previewOverrides.textContent || previewOverrides.text ? (
-                  <p className="text-sm">{String(previewOverrides.textContent || previewOverrides.text)}</p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No text content configured.</p>
+                {formKind === "post" && (
+                  previewOverrides.textContent || previewOverrides.text ? (
+                    <p className="text-sm">{String(previewOverrides.textContent || previewOverrides.text)}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No text content configured.</p>
+                  )
                 )}
                 {previewOverrides.imageUrl ? (
                   <img src={String(previewOverrides.imageUrl)} alt="Preview" loading="lazy" className="max-h-52 w-full rounded object-cover" />

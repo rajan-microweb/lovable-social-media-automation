@@ -68,7 +68,6 @@ export default function CreateStory() {
   const [typeOfStory, setTypeOfStory] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
-  const [text, setText] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [status, setStatus] = useState("draft");
   const [scheduledAt, setScheduledAt] = useState("");
@@ -147,6 +146,7 @@ export default function CreateStory() {
   }, [location.state, selectedTemplateId, templates]);
 
   useEffect(() => {
+    if (pendingTemplate) return;
     if (typeOfStory) {
       const newPlatforms = PLATFORM_MAP[typeOfStory] || [];
       setAvailablePlatforms(newPlatforms);
@@ -207,6 +207,7 @@ export default function CreateStory() {
     toast.warning("Previously selected template was removed.");
   }, [selectedTemplateId, templates, templatesFetching, templatesLoading]);
 
+  /* 
   // Reset selected accounts when platforms change
   useEffect(() => {
     const validAccountIds = selectedAccountIds.filter((id) => platformAccounts.some((account) => account.id === id));
@@ -214,6 +215,7 @@ export default function CreateStory() {
       setSelectedAccountIds(validAccountIds);
     }
   }, [platforms, platformAccounts]);
+  */
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     const isConnected = connectedPlatforms.some((p) => p.toLowerCase() === platform.toLowerCase());
@@ -251,9 +253,7 @@ export default function CreateStory() {
   };
 
   const handleAiGenerate = async (content: string) => {
-    if (aiModalTarget === "textContent") {
-      setText(content);
-    } else if (aiModalTarget === "media") {
+    if (aiModalTarget === "media") {
       if (typeOfStory === "image") {
         setImageUrl(content);
       } else if (typeOfStory === "video") {
@@ -377,7 +377,6 @@ export default function CreateStory() {
 
   // Field visibility logic
   const showMediaUpload = typeOfStory && typeOfStory !== "";
-  const showTextContent = typeOfStory !== "";
   const showAccountSelectors = platforms.length > 0;
   const showSchedule = typeOfStory !== "";
 
@@ -449,116 +448,90 @@ export default function CreateStory() {
 
               {/* Platforms - Show when type is selected */}
               {typeOfStory && availablePlatforms.length > 0 && (
-                <div className="space-y-2">
-                  <Label>
-                    Platforms <span className="text-destructive">*</span>
-                  </Label>
-                  <div className="flex flex-wrap gap-3">
-                    {availablePlatforms.map((platform) => {
-                      const isSelected = platforms.includes(platform.toLowerCase());
-                      const platformLower = platform.toLowerCase();
-
-                      const getPlatformIcon = () => {
-                        switch (platformLower) {
-                          case "facebook":
-                            return (
-                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1877F2">
-                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                              </svg>
-                            );
-                          case "instagram":
-                            return (
-                              <svg viewBox="0 0 24 24" className="w-8 h-8">
-                                <defs>
-                                  <linearGradient id="ig-gradient-create-story" x1="0%" y1="100%" x2="100%" y2="0%">
-                                    <stop offset="0%" stopColor="#FFDC80" />
-                                    <stop offset="10%" stopColor="#FCAF45" />
-                                    <stop offset="30%" stopColor="#F77737" />
-                                    <stop offset="60%" stopColor="#C13584" />
-                                    <stop offset="100%" stopColor="#833AB4" />
-                                  </linearGradient>
-                                </defs>
-                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-create-story)" />
-                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5" />
-                                <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
-                              </svg>
-                            );
-                          default:
-                            return null;
-                        }
-                      };
-
-                      return (
-                        <button
-                          key={platform}
-                          type="button"
-                          onClick={() => handlePlatformChange(platform, !isSelected)}
-                          className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all min-w-[100px] ${
-                            isSelected
-                              ? "border-primary bg-primary/5 shadow-sm"
-                              : "border-border hover:border-muted-foreground/50 bg-card"
-                          }`}
-                        >
-                          {getPlatformIcon()}
-                          <span className="mt-2 text-sm font-medium text-foreground">{platform}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Platform Account Selectors */}
-              {showAccountSelectors && (
                 <div className="space-y-4">
-                  {platforms.includes("facebook") && (
-                    <PlatformAccountSelector
-                      accounts={platformAccounts}
-                      selectedAccountIds={selectedAccountIds}
-                      onAccountToggle={handleAccountToggle}
-                      loading={loadingPlatformAccounts}
-                      platform="facebook"
-                    />
-                  )}
-                  {platforms.includes("instagram") && (
-                    <PlatformAccountSelector
-                      accounts={platformAccounts}
-                      selectedAccountIds={selectedAccountIds}
-                      onAccountToggle={handleAccountToggle}
-                      loading={loadingPlatformAccounts}
-                      platform="instagram"
-                    />
+                  <div className="space-y-2">
+                    <Label>
+                      Platforms <span className="text-destructive">*</span>
+                    </Label>
+                    <div className="flex flex-wrap gap-3">
+                      {availablePlatforms.map((platform) => {
+                        const isSelected = platforms.includes(platform.toLowerCase());
+                        const platformLower = platform.toLowerCase();
+
+                        const getPlatformIcon = () => {
+                          switch (platformLower) {
+                            case "facebook":
+                              return (
+                                <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1877F2">
+                                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                                </svg>
+                              );
+                            case "instagram":
+                              return (
+                                <svg viewBox="0 0 24 24" className="w-8 h-8">
+                                  <defs>
+                                    <linearGradient id="ig-gradient-create-story" x1="0%" y1="100%" x2="100%" y2="0%">
+                                      <stop offset="0%" stopColor="#FFDC80" />
+                                      <stop offset="10%" stopColor="#FCAF45" />
+                                      <stop offset="30%" stopColor="#F77737" />
+                                      <stop offset="60%" stopColor="#C13584" />
+                                      <stop offset="100%" stopColor="#833AB4" />
+                                    </linearGradient>
+                                  </defs>
+                                  <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-create-story)" />
+                                  <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5" />
+                                  <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
+                                </svg>
+                              );
+                            default:
+                              return null;
+                          }
+                        };
+
+                        return (
+                          <button
+                            key={platform}
+                            type="button"
+                            onClick={() => handlePlatformChange(platform, !isSelected)}
+                            className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all min-w-[100px] ${
+                              isSelected
+                                ? "border-primary bg-primary/5 shadow-sm"
+                                : "border-border hover:border-muted-foreground/50 bg-card"
+                            }`}
+                          >
+                            {getPlatformIcon()}
+                            <span className="mt-2 text-sm font-medium text-foreground">{platform}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {showAccountSelectors && (
+                    <div className="space-y-4">
+                      {platforms.includes("facebook") && (
+                        <PlatformAccountSelector
+                          accounts={platformAccounts}
+                          selectedAccountIds={selectedAccountIds}
+                          onAccountToggle={handleAccountToggle}
+                          loading={loadingPlatformAccounts}
+                          platform="facebook"
+                        />
+                      )}
+                      {platforms.includes("instagram") && (
+                        <PlatformAccountSelector
+                          accounts={platformAccounts}
+                          selectedAccountIds={selectedAccountIds}
+                          onAccountToggle={handleAccountToggle}
+                          loading={loadingPlatformAccounts}
+                          platform="instagram"
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* Text Content */}
-              {showTextContent && typeOfStory && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="text">Text Content (Optional)</Label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openAiModal("text", "textContent")}
-                      className="h-8 gap-1"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      AI Generate
-                    </Button>
-                  </div>
-                  <Textarea
-                    id="text"
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="Write your story text..."
-                    rows={4}
-                    maxLength={2000}
-                  />
-                  <div className="text-xs text-muted-foreground text-right">{text.length}/2000</div>
-                </div>
-              )}
 
               {/* Media Upload */}
               {showMediaUpload && (
@@ -734,7 +707,7 @@ export default function CreateStory() {
           typeOfPost: typeOfStory,
           existingImageUrl: imageUrl || (mediaFile && typeOfStory === "image" ? URL.createObjectURL(mediaFile) : ""),
           existingVideoUrl: videoUrl || (mediaFile && typeOfStory === "video" ? URL.createObjectURL(mediaFile) : ""),
-          existingTextContent: text,
+          existingTextContent: "",
         }}
       />
 

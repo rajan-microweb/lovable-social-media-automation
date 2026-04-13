@@ -111,6 +111,7 @@ export default function Accounts() {
     open: false,
     platform: null,
   });
+  const [sessionToRevoke, setSessionToRevoke] = useState<LoginActivitySession | null>(null);
 
   // OpenAI usage state
   const [openaiUsage, setOpenaiUsage] = useState<{
@@ -208,7 +209,7 @@ export default function Accounts() {
   };
 
   // Revoke access for another session
-  const handleRevokeAccess = async (session: LoginActivitySession) => {
+  const executeRevokeAccess = async (session: LoginActivitySession) => {
     if (!user?.id) return;
 
     setRevokingSession(session.userId);
@@ -238,6 +239,7 @@ export default function Accounts() {
       toast.error("Failed to revoke access");
     } finally {
       setRevokingSession(null);
+      setSessionToRevoke(null);
     }
   };
 
@@ -835,10 +837,15 @@ export default function Accounts() {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleRevokeAccess(session)}
+                            onClick={() => setSessionToRevoke(session)}
                             disabled={revokingSession === session.userId}
                           >
-                            {revokingSession === session.userId ? "Revoking..." : "Remove Access"}
+                            {revokingSession === session.userId ? (
+                              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <X className="h-4 w-4 mr-2" />
+                            )}
+                            Revoke This Session
                           </Button>
                         </div>
                       </CardContent>
@@ -1147,6 +1154,26 @@ export default function Accounts() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Disconnect
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={!!sessionToRevoke} onOpenChange={(open) => !open && setSessionToRevoke(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revoke session access?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will forcefully disconnect the selected session. The user on that device will no longer be able to post to the linked LinkedIn accounts until they re-authenticate.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => sessionToRevoke && executeRevokeAccess(sessionToRevoke)}
+              >
+                Revoke Access
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

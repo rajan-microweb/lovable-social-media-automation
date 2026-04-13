@@ -55,7 +55,6 @@ export default function EditStory() {
   const [typeOfStory, setTypeOfStory] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
-  const [text, setText] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [existingMediaUrl, setExistingMediaUrl] = useState("");
   const [status, setStatus] = useState("draft");
@@ -179,6 +178,7 @@ export default function EditStory() {
     }
   }, [typeOfStory]);
 
+  /* 
   // Reset selected accounts when platforms change
   useEffect(() => {
     const validAccountIds = selectedAccountIds.filter((id) => 
@@ -188,6 +188,7 @@ export default function EditStory() {
       setSelectedAccountIds(validAccountIds);
     }
   }, [platforms, platformAccounts]);
+  */
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     const isConnected = connectedPlatforms.some(p => p.toLowerCase() === platform.toLowerCase());
@@ -225,9 +226,7 @@ export default function EditStory() {
   };
 
   const handleAiGenerate = async (content: string) => {
-    if (aiModalTarget === "textContent") {
-      setText(content);
-    } else if (aiModalTarget === "media") {
+    if (aiModalTarget === "media") {
       if (typeOfStory === "image") {
         setImageUrl(content);
       } else if (typeOfStory === "video") {
@@ -486,35 +485,6 @@ export default function EditStory() {
                 </div>
               )}
 
-              {/* Text Content */}
-              {showTextContent && typeOfStory && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="text">Text Content (Optional)</Label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openAiModal("text", "textContent")}
-                      className="h-8 gap-1"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      AI Generate
-                    </Button>
-                  </div>
-                  <Textarea
-                    id="text"
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="Write your story text..."
-                    rows={4}
-                    maxLength={2000}
-                  />
-                  <div className="text-xs text-muted-foreground text-right">
-                    {text.length}/2000
-                  </div>
-                </div>
-              )}
 
               {/* Media Upload */}
               {showMediaUpload && (
@@ -722,7 +692,7 @@ export default function EditStory() {
           typeOfPost: typeOfStory,
           existingImageUrl: imageUrl || (mediaFile && typeOfStory === "image" ? URL.createObjectURL(mediaFile) : ""),
           existingVideoUrl: videoUrl || (mediaFile && typeOfStory === "video" ? URL.createObjectURL(mediaFile) : ""),
-          existingTextContent: text,
+          existingTextContent: "",
         }}
       />
 

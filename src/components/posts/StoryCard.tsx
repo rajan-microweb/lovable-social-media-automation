@@ -3,6 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { Edit, Trash2 } from "lucide-react";
 import type { Story } from "@/types/story";
@@ -65,9 +76,6 @@ export function StoryCard({ story, isSelected, onToggleSelect, onDelete, publish
           </p>
         )}
 
-        {story.text && (
-          <p className="text-sm text-muted-foreground line-clamp-2">{story.text}</p>
-        )}
 
         {(story.image || story.video) && (
           <div className="mt-2">
@@ -120,13 +128,31 @@ export function StoryCard({ story, isSelected, onToggleSelect, onDelete, publish
           >
             <Edit className="h-3 w-3" />
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onDelete(story.id)}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete story?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The story and its media will be permanently removed.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => onDelete(story.id)}>
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </CardContent>
     </Card>
