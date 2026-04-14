@@ -527,7 +527,7 @@ export function SettingsPanel() {
                     <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground opacity-60">Secret Workspace Key</Label>
                     <div className="flex items-center gap-3">
                       <div className="relative flex-1">
-                        <Input defaultValue="sk_test_4eC39HqLyjWDarjtT1zdp7dc" readOnly type="password" className="h-12 font-mono text-sm bg-muted/20 border-muted" />
+                        <Input defaultValue="**********" readOnly type="password" className="h-12 font-mono text-sm bg-muted/20 border-muted" />
                         <Button variant="ghost" size="icon" className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground/40 hover:text-primary transition-colors">
                           <History className="h-4 w-4" />
                         </Button>
