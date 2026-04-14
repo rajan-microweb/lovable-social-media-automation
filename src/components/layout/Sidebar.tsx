@@ -27,6 +27,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
   SidebarHeader,
+  SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -78,7 +79,6 @@ export function AppSidebar() {
       items: [
         { title: "Accounts", url: "/accounts", icon: UserCircle },
         { title: "Settings", url: "/settings", icon: Settings },
-        { title: "Sign Out", icon: LogOut, onClick: signOut },
       ],
     },
   ];
@@ -92,50 +92,66 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
+      <SidebarHeader className="px-4 py-3">
+        {!collapsed && <h1 className="text-xl font-bold text-primary">Admin Panel</h1>}
+        {collapsed && <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">A</div>}
+      </SidebarHeader>
+
+      <SidebarSeparator />
+
       <SidebarContent>
-        <div className="flex flex-col h-full">
-          <SidebarHeader className="px-4 py-3">
-            {!collapsed && <h1 className="text-xl font-bold text-primary">Admin Panel</h1>}
-          </SidebarHeader>
-
-          {!collapsed && <SidebarSeparator />}
-
-          {navSections.map((section, idx) => (
-            <Fragment key={section.label}>
-              {idx > 0 && !collapsed && <SidebarSeparator />}
-              <SidebarGroup>
-                <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {section.items.map((item) => (
-                      <SidebarMenuItem key={item.title}>
-                        {item.url ? (
-                          <SidebarMenuButton asChild>
-                            <NavLink
-                              to={item.url}
-                              end
-                              className="hover:bg-sidebar-accent"
-                              activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
-                            >
-                              <item.icon className="h-4 w-4" />
-                              {!collapsed && <span>{item.title}</span>}
-                            </NavLink>
-                          </SidebarMenuButton>
-                        ) : (
-                          <SidebarMenuButton onClick={item.onClick}>
+        {navSections.map((section, idx) => (
+          <Fragment key={section.label}>
+            {idx > 0 && !collapsed && <SidebarSeparator />}
+            <SidebarGroup>
+              <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {section.items.map((item) => (
+                    <SidebarMenuItem key={item.title}>
+                      {item.url ? (
+                        <SidebarMenuButton asChild tooltip={item.title}>
+                          <NavLink
+                            to={item.url}
+                            end
+                            className="hover:bg-sidebar-accent"
+                            activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
+                          >
                             <item.icon className="h-4 w-4" />
                             {!collapsed && <span>{item.title}</span>}
-                          </SidebarMenuButton>
-                        )}
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </Fragment>
-          ))}
-        </div>
+                          </NavLink>
+                        </SidebarMenuButton>
+                      ) : (
+                        <SidebarMenuButton onClick={item.onClick} tooltip={item.title}>
+                          <item.icon className="h-4 w-4" />
+                          {!collapsed && <span>{item.title}</span>}
+                        </SidebarMenuButton>
+                      )}
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </Fragment>
+        ))}
       </SidebarContent>
+
+      <SidebarSeparator />
+      
+      <SidebarFooter className="p-4">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              onClick={signOut} 
+              tooltip="Sign Out"
+              className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span className="font-semibold">Sign Out</span>}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
