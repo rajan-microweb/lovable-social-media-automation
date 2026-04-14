@@ -517,45 +517,7 @@ export function SettingsPanel() {
               </CardContent>
             </Card>
 
-            <Card className="border-none shadow-md bg-card/60 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle>Developers & API</CardTitle>
-                <CardDescription>Integrate your publishing workflow with external tools.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                 <div className="space-y-4">
-                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground opacity-60">Secret Workspace Key</Label>
-                    <div className="flex items-center gap-3">
-                      <div className="relative flex-1">
-                        <Input defaultValue="**********" readOnly type="password" className="h-12 font-mono text-sm bg-muted/20 border-muted" />
-                        <Button variant="ghost" size="icon" className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground/40 hover:text-primary transition-colors">
-                          <History className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <Button className="h-12 px-6 font-black rounded-lg border-2 hover:bg-muted transition-all bg-background">
-                        <Key className="h-4 w-4 mr-2" /> 
-                        Regenerate
-                      </Button>
-                    </div>
-                 </div>
-
-                 <Separator />
-
-                 <div className="space-y-4">
-                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground opacity-60">Incoming Webhooks</Label>
-                    <div className="p-12 border-2 border-dashed border-muted rounded-2xl flex flex-col items-center justify-center text-center gap-6 bg-muted/5">
-                       <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground/40">
-                          <Globe className="h-8 w-8" />
-                       </div>
-                       <div>
-                          <p className="font-black text-lg">No endpoints configured</p>
-                          <p className="text-sm text-muted-foreground max-w-[320px] mx-auto mt-2 italic leading-relaxed">Webhooks allow external systems (like n8n, Zapier, or custom scripts) to trigger post creation automatically.</p>
-                       </div>
-                       <Button variant="outline" size="lg" className="h-11 px-8 font-bold border-muted-foreground/30 hover:bg-muted">Set up Endpoint</Button>
-                    </div>
-                 </div>
-              </CardContent>
-            </Card>
+            {/* Developers & API section removed temporarily */}
           </div>
         </TabsContent>
 
