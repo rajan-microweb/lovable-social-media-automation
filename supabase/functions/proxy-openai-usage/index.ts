@@ -18,13 +18,25 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { user_id, days = 30 } = body;
+    const supabase = createSupabaseClient();
+
+    let user_id: string | undefined = body.user_id;
+    const days = body.days ?? 30;
+
+    // For JWT callers, validate token and derive user_id from it (ignore body user_id)
+    if (!hasValidApiKey && hasBearer) {
+      const token = authHeader!.replace("Bearer ", "");
+      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+      if (userErr || !userData?.user) {
+        return jsonResponse({ success: false, data: null, error: "Unauthorized" }, 401);
+      }
+      user_id = userData.user.id;
+    }
 
     if (!user_id) {
       return jsonResponse({ success: false, data: null, error: "user_id is required" }, 400);
     }
 
-    const supabase = createSupabaseClient();
     const { credentials, error: credError } = await getDecryptedPlatformCredentials(supabase, user_id, "openai");
 
     if (credError || !credentials) {
