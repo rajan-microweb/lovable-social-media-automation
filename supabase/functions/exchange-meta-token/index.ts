@@ -1,4 +1,5 @@
 import { corsHeaders } from "../_shared/encryption.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -7,6 +8,28 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Require authenticated user (JWT)
+    const authHeader = req.headers.get("authorization") || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: userData, error: userErr } = await supabase.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+    if (userErr || !userData?.user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { accessToken, appId, appSecret } = await req.json();
 
     if (!accessToken || !appId || !appSecret) {
