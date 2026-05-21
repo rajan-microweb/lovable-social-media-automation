@@ -137,6 +137,44 @@ serve(async (req) => {
       );
     }
 
+    // SECURITY: Verify that every requested LinkedIn ID actually belongs to the
+    // authenticated caller. Without this check, any signed-in user could
+    // enumerate other users' Supabase user_ids by guessing LinkedIn IDs.
+    const { data: ownIntegration, error: ownError } = await supabase
+      .from('platform_integrations')
+      .select('credentials')
+      .eq('user_id', authenticatedUserId)
+      .eq('platform_name', 'linkedin')
+      .maybeSingle();
+
+    if (ownError) {
+      console.error('Error fetching caller integration:', ownError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify account ownership' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const ownCreds = ownIntegration
+      ? await safeDecryptCredentials(ownIntegration.credentials, supabase)
+      : {};
+    const ownedIds = new Set<string>();
+    const ownPersonal = ownCreds.personal_info as Record<string, unknown> | undefined;
+    if (ownPersonal?.linkedin_id) ownedIds.add(ownPersonal.linkedin_id as string);
+    if (Array.isArray(ownCreds.company_info)) {
+      for (const c of ownCreds.company_info as Array<{ company_id?: string }>) {
+        if (c.company_id) ownedIds.add(c.company_id);
+      }
+    }
+
+    const unauthorizedId = linkedin_ids.find((id) => !ownedIds.has(id));
+    if (unauthorizedId) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: one or more linkedin_ids do not belong to you' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log(`Fetching login activity for user ${authenticatedUserId} with LinkedIn IDs:`, linkedin_ids);
 
     // Fetch all platform integrations for LinkedIn
