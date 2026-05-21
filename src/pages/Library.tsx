@@ -367,6 +367,7 @@ export default function Library() {
           fileUrl: publicUrl,
           contentType: contentType!,
           tags: [],
+          createdAt: new Date().toISOString(),
         },
       ]);
 
