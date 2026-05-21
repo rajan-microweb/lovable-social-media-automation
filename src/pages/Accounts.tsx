@@ -565,12 +565,15 @@ export default function Accounts() {
         credentialsToStore = {
           access_token: exchangeData.access_token,
           expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
-        };
-
-        // Store app credentials in metadata (not encrypted, needed for future refreshes)
-        metadataToStore = {
+          // App credentials must be encrypted with the rest of the credentials
+          // (kept here so refresh flows can read them after AES-GCM decryption).
           app_id: fields.appId,
           app_secret: fields.appSecret,
+        };
+
+        // Only store non-sensitive identifiers in plaintext metadata.
+        metadataToStore = {
+          app_id: fields.appId,
         };
 
         toast.success("Long-lived token obtained successfully!");
