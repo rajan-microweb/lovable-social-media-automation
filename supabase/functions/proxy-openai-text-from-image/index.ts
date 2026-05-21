@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const openaiKey = (credentials.api_key || credentials.apiKey || credentials.key || credentials.openai_api_key) as string;
     if (!openaiKey) {
       console.error("[proxy-openai-text-from-image] Credential keys available:", Object.keys(credentials));
-      return jsonResponse(errorResponse("No OpenAI API key found in credentials. Keys found: " + Object.keys(credentials).join(", ")), 404);
+      return jsonResponse(errorResponse("No OpenAI API key found in credentials"), 404);
     }
 
     const userPrompt = prompt || "Analyze this image and generate engaging social media content. Include a caption, description, and relevant hashtags.";

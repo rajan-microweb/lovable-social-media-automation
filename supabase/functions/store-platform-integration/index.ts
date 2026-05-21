@@ -100,6 +100,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('authorization');
     const hasValidApiKey = apiKey && apiKey === expectedApiKey;
     const hasBearer = authHeader && authHeader.startsWith('Bearer ');
+    let jwtUserId: string | null = null;
 
     if (!hasValidApiKey && !hasBearer) {
       console.error('Invalid or missing authentication');
@@ -123,8 +124,21 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // If JWT-authenticated (not n8n API key), derive user_id from the verified token
+    if (!hasValidApiKey && hasBearer) {
+      const token = authHeader!.replace('Bearer ', '');
+      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+      if (userErr || !userData?.user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      jwtUserId = userData.user.id;
+    }
+
     const body = await req.json();
-    
+
     console.log('Received payload for platform:', body.platform_name);
 
     // Validate input data
@@ -137,7 +151,10 @@ serve(async (req) => {
       );
     }
 
-    const { user_id, platform_name, credentials, status } = validationResult.data;
+    const { platform_name, credentials, status } = validationResult.data;
+    // For JWT callers, ignore body user_id and use the JWT-derived id.
+    // Only API-key (n8n) callers may target an arbitrary user_id.
+    const user_id = jwtUserId ?? validationResult.data.user_id;
 
     console.log('Storing platform integration:', { 
       platform_name, 
