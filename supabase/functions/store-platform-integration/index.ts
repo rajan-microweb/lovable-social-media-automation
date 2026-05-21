@@ -100,6 +100,7 @@ serve(async (req) => {
     const authHeader = req.headers.get('authorization');
     const hasValidApiKey = apiKey && apiKey === expectedApiKey;
     const hasBearer = authHeader && authHeader.startsWith('Bearer ');
+    let jwtUserId: string | null = null;
 
     if (!hasValidApiKey && !hasBearer) {
       console.error('Invalid or missing authentication');
