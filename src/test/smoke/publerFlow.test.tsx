@@ -8,7 +8,11 @@ import Calendar from "@/pages/Calendar";
 import Analytics from "@/pages/Analytics";
 
 // Queue page was removed from the app; provide a local stub so this legacy smoke test still compiles.
-const Queue = () => null;
+const Queue = () => {
+  if (stage === "queued") return <div>Queued</div>;
+  if (stage === "published") return <div>Published</div>;
+  return <div>Failed</div>;
+};
 
 type PipelineStage = "queued" | "published" | "failed";
 

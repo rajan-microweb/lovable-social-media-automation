@@ -213,6 +213,21 @@ export default function Calendar() {
   const dateAtHour = (day: Date, hour: number) =>
     new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0);
 
+  const getSuggestedDateTime = (targetDate: Date) => {
+    const now = new Date();
+    let hours = now.getHours();
+    let minutes = now.getMinutes();
+
+    if (minutes > 0) {
+      hours += 1;
+      minutes = 0;
+    }
+
+    const date = new Date(targetDate);
+    date.setHours(hours, minutes, 0, 0);
+    return date;
+  };
+
   const openQuickAddAt = (date: Date) => {
     setQuickAddDate(date);
   };
@@ -509,17 +524,17 @@ export default function Calendar() {
             tabIndex={0}
             aria-label={`Open day view for ${format(currentDay, "EEEE, MMMM d, yyyy")}`}
             onClick={() => {
-              openQuickAddAt(new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate(), 9, 0, 0, 0));
+              openQuickAddAt(getSuggestedDateTime(currentDay));
               goToDayView(currentDay);
             }}
             onKeyDown={(e) => {
               if (e.key === " " || e.key === "Spacebar") {
                 e.preventDefault();
-                openQuickAddAt(new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate(), 9, 0, 0, 0));
+                openQuickAddAt(getSuggestedDateTime(currentDay));
                 goToDayView(currentDay);
               }
               if (e.key === "Enter") {
-                openQuickAddAt(new Date(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate(), 9, 0, 0, 0));
+                openQuickAddAt(getSuggestedDateTime(currentDay));
                 goToDayView(currentDay);
               }
             }}
@@ -605,17 +620,17 @@ export default function Calendar() {
               tabIndex={0}
               aria-label={`Open day view for ${format(day, "EEEE, MMMM d, yyyy")}`}
               onClick={() => {
-                openQuickAddAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0, 0));
+                openQuickAddAt(getSuggestedDateTime(day));
                 goToDayView(day);
               }}
               onKeyDown={(e) => {
                 if (e.key === " " || e.key === "Spacebar") {
                   e.preventDefault();
-                  openQuickAddAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0, 0));
+                  openQuickAddAt(getSuggestedDateTime(day));
                   goToDayView(day);
                 }
                 if (e.key === "Enter") {
-                  openQuickAddAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0, 0));
+                  openQuickAddAt(getSuggestedDateTime(day));
                   goToDayView(day);
                 }
               }}

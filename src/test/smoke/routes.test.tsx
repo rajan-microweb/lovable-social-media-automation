@@ -50,27 +50,40 @@ vi.mock("@/lib/api/calendar", () => ({
 
 vi.mock("@/integrations/supabase/client", () => {
   const fromMock = vi.fn((table: string) => {
-    return {
-      select: vi.fn(() => {
-        return {
-          eq: vi.fn(() => {
-            if (table === "posts") {
-              return Promise.resolve({
-                data: [{ status: SOCIAL_STATUS_DRAFT }, { status: SOCIAL_STATUS_PUBLISHED }],
-                error: null,
-              });
-            }
-            if (table === "stories") {
-              return Promise.resolve({
-                data: [{ status: SOCIAL_STATUS_PUBLISHED }],
-                error: null,
-              });
-            }
-            return Promise.resolve({ data: [], error: null });
-          }),
-        };
+    const chain = {
+      select: vi.fn(() => chain),
+      eq: vi.fn(() => chain),
+      order: vi.fn(() => chain),
+      limit: vi.fn(() => chain),
+      single: vi.fn(() => chain),
+      then: vi.fn((resolve) => {
+        if (table === "posts") {
+          return resolve({
+            data: [
+              { id: "p1", title: "Test Post 1", status: SOCIAL_STATUS_DRAFT, platforms: ["linkedin"], updated_at: new Date().toISOString() },
+              { id: "p2", title: "Test Post 2", status: SOCIAL_STATUS_PUBLISHED, platforms: ["facebook"], updated_at: new Date().toISOString() }
+            ],
+            error: null,
+          });
+        }
+        if (table === "stories") {
+          return resolve({
+            data: [
+              { id: "s1", title: "Test Story 1", status: SOCIAL_STATUS_PUBLISHED, platforms: ["instagram"], updated_at: new Date().toISOString() }
+            ],
+            error: null,
+          });
+        }
+        if (table === "profiles") {
+          return resolve({
+            data: { name: "Rajan Microweb" },
+            error: null,
+          });
+        }
+        return resolve({ data: [], error: null });
       }),
     };
+    return chain;
   });
 
   return {

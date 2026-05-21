@@ -124,11 +124,7 @@ const App = () => (
             />
             <Route
               path="/analytics"
-              element={
-                <ProtectedRoute>
-                  <Analytics />
-                </ProtectedRoute>
-              }
+              element={<Navigate to="/dashboard" replace />}
             />
             <Route
               path="/approvals"
@@ -148,11 +144,7 @@ const App = () => (
             />
             <Route
               path="/settings"
-              element={
-                <ProtectedRoute>
-                  <Settings />
-                </ProtectedRoute>
-              }
+              element={<Navigate to="/dashboard" replace />}
             />
             <Route
               path="/settings/users"

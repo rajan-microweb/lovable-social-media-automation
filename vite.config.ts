@@ -11,18 +11,18 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       host: "::",
-      port: Number(process.env.PORT ?? 2003),
+      port: Number(process.env.PORT ?? 2025),
     },
     plugins: [
       react(),
       mode === "development" && componentTagger(),
       analyze &&
-        visualizer({
-          filename: "dist/bundle-stats.html",
-          open: false,
-          gzipSize: true,
-          brotliSize: true,
-        }),
+      visualizer({
+        filename: "dist/bundle-stats.html",
+        open: false,
+        gzipSize: true,
+        brotliSize: true,
+      }),
     ].filter(Boolean),
     resolve: {
       alias: {
