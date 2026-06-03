@@ -649,10 +649,40 @@ export default function Accounts() {
         console.error("Webhook call failed:", webhookError);
         // Don't show error since credentials are already stored
       }
+
+      // Step 3: Automatically refresh credentials right after storing
+      try {
+        setRefreshingPlatform(platformKey);
+        const refreshResponse = await fetch(
+          "https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials?action=refresh",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              platform_name: platformKey,
+              user_id: user.id,
+              integration_id: integrationData?.id,
+            }),
+          }
+        );
+
+        if (!refreshResponse.ok) {
+          const errorText = await refreshResponse.text();
+          console.error("Auto-refresh error:", errorText);
+        } else {
+          toast.success(`${platformConfigs[platformKey]?.name || platformKey} credentials refreshed`);
+        }
+      } catch (refreshError) {
+        console.error("Auto-refresh failed:", refreshError);
+      } finally {
+        setRefreshingPlatform(null);
+        await fetchConnectedAccounts();
+      }
     } catch (error) {
       console.error("Error storing credentials:", error);
       toast.error(`Failed to store credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
+
 
     setPlatformDialog({ open: false, platform: null });
   };
