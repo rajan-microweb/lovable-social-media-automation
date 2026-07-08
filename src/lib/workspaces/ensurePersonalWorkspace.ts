@@ -1,28 +1,10 @@
-import { supabase } from "@/integrations/supabase/client";
-
 /**
- * MVP behavior: the "active workspace" defaults to the user's personal workspace.
- * We model it as `workspaces.id = auth.uid()`, and ensure membership exists.
+ * DEPRECATED — kept only to satisfy any legacy imports.
+ *
+ * The app is now multi-tenant (Organizations → Workspaces). Users create their
+ * organization + default workspace via the /onboarding flow. There is no
+ * "personal workspace = user_id" concept anymore.
  */
-export async function ensurePersonalWorkspace(userId: string): Promise<void> {
-  // Create/update the workspace
-  const { error: workspaceError } = await supabase
-    .from("workspaces")
-    .upsert(
-      { id: userId, name: "Personal Workspace" },
-      { onConflict: "id" }
-    );
-
-  if (workspaceError) throw workspaceError;
-
-  // Create/update membership (role=ADMIN => OWNER for now)
-  const { error: memberError } = await supabase
-    .from("workspace_members")
-    .upsert(
-      { workspace_id: userId, user_id: userId, role: "ADMIN" },
-      { onConflict: "workspace_id,user_id" }
-    );
-
-  if (memberError) throw memberError;
+export async function ensurePersonalWorkspace(_userId: string): Promise<void> {
+  return;
 }
-
