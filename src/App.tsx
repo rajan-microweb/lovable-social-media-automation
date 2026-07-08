@@ -25,6 +25,7 @@ import Settings from "./pages/Settings";
 import Templates from "./pages/Templates";
 import History from "./pages/History";
 import NotFound from "./pages/NotFound";
+import Onboarding from "./pages/Onboarding";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -41,6 +42,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route
               path="/dashboard"
               element={
