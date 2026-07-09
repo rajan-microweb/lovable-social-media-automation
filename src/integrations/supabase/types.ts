@@ -199,96 +199,21 @@ export type Database = {
           },
         ]
       }
-      content_approvals: {
-        Row: {
-          approval_status: string
-          content_id: string
-          content_type: string
-          created_at: string
-          id: string
-          note: string | null
-          organization_id: string | null
-          requested_at: string
-          requested_by: string
-          reviewed_at: string | null
-          reviewed_by: string | null
-          updated_at: string
-          workspace_id: string
-        }
-        Insert: {
-          approval_status?: string
-          content_id: string
-          content_type: string
-          created_at?: string
-          id?: string
-          note?: string | null
-          organization_id?: string | null
-          requested_at?: string
-          requested_by: string
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          updated_at?: string
-          workspace_id: string
-        }
-        Update: {
-          approval_status?: string
-          content_id?: string
-          content_type?: string
-          created_at?: string
-          id?: string
-          note?: string | null
-          organization_id?: string | null
-          requested_at?: string
-          requested_by?: string
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          updated_at?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "content_approvals_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "content_approvals_requested_by_fkey"
-            columns: ["requested_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "content_approvals_reviewed_by_fkey"
-            columns: ["reviewed_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "content_approvals_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      content_change_requests: {
+      content_reviews: {
         Row: {
           content_id: string
           content_type: string
           created_at: string
           details: Json | null
           id: string
+          kind: string
+          note: string | null
           organization_id: string | null
-          request_status: string
           requested_at: string
           requested_by: string
           reviewed_at: string | null
           reviewed_by: string | null
+          status: string
           updated_at: string
           workspace_id: string
         }
@@ -298,12 +223,14 @@ export type Database = {
           created_at?: string
           details?: Json | null
           id?: string
+          kind: string
+          note?: string | null
           organization_id?: string | null
-          request_status?: string
           requested_at?: string
           requested_by: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          status?: string
           updated_at?: string
           workspace_id: string
         }
@@ -313,39 +240,27 @@ export type Database = {
           created_at?: string
           details?: Json | null
           id?: string
+          kind?: string
+          note?: string | null
           organization_id?: string | null
-          request_status?: string
           requested_at?: string
           requested_by?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          status?: string
           updated_at?: string
           workspace_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "content_change_requests_organization_id_fkey"
+            foreignKeyName: "content_reviews_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "content_change_requests_requested_by_fkey"
-            columns: ["requested_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "content_change_requests_reviewed_by_fkey"
-            columns: ["reviewed_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "content_change_requests_workspace_id_fkey"
+            foreignKeyName: "content_reviews_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -671,35 +586,6 @@ export type Database = {
             foreignKeyName: "organization_roles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      organization_settings: {
-        Row: {
-          created_at: string
-          organization_id: string
-          settings: Json
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          organization_id: string
-          settings?: Json
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          organization_id?: string
-          settings?: Json
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "organization_settings_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1241,6 +1127,33 @@ export type Database = {
           },
         ]
       }
+      tenant_settings: {
+        Row: {
+          created_at: string
+          id: string
+          scope: string
+          scope_id: string
+          settings: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          scope: string
+          scope_id: string
+          settings?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          scope?: string
+          scope_id?: string
+          settings?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       usage_logs: {
         Row: {
           id: number
@@ -1419,35 +1332,6 @@ export type Database = {
             foreignKeyName: "workspace_members_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      workspace_settings: {
-        Row: {
-          created_at: string
-          settings: Json
-          updated_at: string
-          workspace_id: string
-        }
-        Insert: {
-          created_at?: string
-          settings?: Json
-          updated_at?: string
-          workspace_id: string
-        }
-        Update: {
-          created_at?: string
-          settings?: Json
-          updated_at?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "workspace_settings_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: true
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
