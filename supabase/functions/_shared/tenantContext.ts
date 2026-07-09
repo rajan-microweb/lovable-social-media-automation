@@ -88,19 +88,20 @@ export async function resolveTenantContext(
     const orgIdHeader = req.headers.get("x-org-id");
     const workspaceIdHeader = req.headers.get("x-workspace-id");
 
-    // Resolve org: prefer header, else fall back to user_context.
+    // Resolve org: prefer header, else fall back to profiles.
     let orgId = orgIdHeader;
     let workspaceId = workspaceIdHeader;
 
     if (!orgId || !workspaceId) {
       const { data: ctx } = await svc
-        .from("user_context")
+        .from("profiles")
         .select("active_organization_id, active_workspace_id")
-        .eq("user_id", user.id)
+        .eq("id", user.id)
         .maybeSingle();
       orgId = orgId ?? ctx?.active_organization_id ?? null;
       workspaceId = workspaceId ?? ctx?.active_workspace_id ?? null;
     }
+
 
     if (!orgId) throw new HttpError(400, { error: "No active organization" });
 

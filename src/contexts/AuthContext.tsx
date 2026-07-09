@@ -33,12 +33,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loadTenant = useCallback(async (userId: string) => {
     setTenantLoading(true);
     try {
-      // 1. Read active context if any.
+      // 1. Read active context from profiles.
       const { data: ctx } = await supabase
-        .from("user_context")
+        .from("profiles")
         .select("active_organization_id, active_workspace_id")
-        .eq("user_id", userId)
+        .eq("id", userId)
         .maybeSingle();
+
+
 
       let activeOrg = ctx?.active_organization_id ?? null;
       let activeWs = ctx?.active_workspace_id ?? null;
@@ -86,12 +88,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Persist context if it wasn't set yet.
         if (!ctx?.active_organization_id || ctx?.active_workspace_id !== activeWs) {
-          await supabase.from("user_context").upsert({
-            user_id: userId,
+          await supabase.from("profiles").update({
             active_organization_id: activeOrg,
             active_workspace_id: activeWs,
-          });
+          }).eq("id", userId);
         }
+
       } else {
         setIsAdmin(false);
       }
@@ -147,11 +149,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const setActiveTenant = useCallback(async (nextOrg: string, nextWs: string) => {
     if (!user) return;
-    await supabase.from("user_context").upsert({
-      user_id: user.id,
+    await supabase.from("profiles").update({
       active_organization_id: nextOrg,
       active_workspace_id: nextWs,
-    });
+    }).eq("id", user.id);
+
     await loadTenant(user.id);
   }, [user, loadTenant]);
 
