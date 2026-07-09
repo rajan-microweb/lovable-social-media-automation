@@ -33,12 +33,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loadTenant = useCallback(async (userId: string) => {
     setTenantLoading(true);
     try {
-      // 1. Read active context if any.
+      // 1. Read active context from profiles.
       const { data: ctx } = await supabase
-        .from("user_context")
+        .from("profiles")
         .select("active_organization_id, active_workspace_id")
-        .eq("user_id", userId)
+        .eq("id", userId)
         .maybeSingle();
+
+
 
       let activeOrg = ctx?.active_organization_id ?? null;
       let activeWs = ctx?.active_workspace_id ?? null;
