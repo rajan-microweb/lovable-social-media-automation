@@ -42,11 +42,11 @@ export default function AcceptInvite() {
           .order("created_at", { ascending: true })
           .limit(1)
           .maybeSingle();
-        await supabase.from("user_context").upsert({
-          user_id: user!.id,
+        await supabase.from("profiles").update({
           active_organization_id: data.organization_id,
           active_workspace_id: ws?.id ?? null,
-        });
+        }).eq("id", user!.id);
+
         await refreshTenant();
       }
       setState("done");
