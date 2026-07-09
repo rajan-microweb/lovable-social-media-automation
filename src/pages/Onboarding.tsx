@@ -57,16 +57,7 @@ export default function Onboarding() {
         .single();
       if (orgErr) throw orgErr;
 
-      // 2. Add self as OWNER
-      const { error: memErr } = await supabase
-        .from("organization_members")
-        .insert({
-          organization_id: org.id,
-          user_id: user.id,
-          role: "OWNER",
-          status: "active",
-        });
-      if (memErr) throw memErr;
+      // 2. Owner member is auto-created by trg_add_owner_as_member on organizations insert.
 
       // 3. Seed built-in role permissions
       await supabase.rpc("seed_org_role_permissions", { _org: org.id });
