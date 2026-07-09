@@ -149,11 +149,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const setActiveTenant = useCallback(async (nextOrg: string, nextWs: string) => {
     if (!user) return;
-    await supabase.from("user_context").upsert({
-      user_id: user.id,
+    await supabase.from("profiles").update({
       active_organization_id: nextOrg,
       active_workspace_id: nextWs,
-    });
+    }).eq("id", user.id);
+
     await loadTenant(user.id);
   }, [user, loadTenant]);
 
