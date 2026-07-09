@@ -87,8 +87,15 @@ export function AppSidebar() {
       items: publishItems,
     },
     {
-      label: "Settings",
+      label: "Workspace",
       items: [
+        ...(isAdmin
+          ? [
+              { title: "Team", url: "/team", icon: Users },
+              { title: "Billing", url: "/billing", icon: CreditCard },
+              { title: "Usage", url: "/usage", icon: Gauge },
+            ]
+          : []),
         { title: "Accounts", url: "/accounts", icon: UserCircle },
         { title: "Settings", url: "/settings", icon: Settings },
       ],
