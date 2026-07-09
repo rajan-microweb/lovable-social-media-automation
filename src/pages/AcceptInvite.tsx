@@ -34,21 +34,13 @@ export default function AcceptInvite() {
       sessionStorage.removeItem("pending_invite_token");
       if (data?.organization_id) {
         // Switch tenant to newly joined org
-        const { data: ws } = await supabase
-          .from("workspaces")
-          .select("id")
-          .eq("organization_id", data.organization_id)
-          .order("is_default", { ascending: false })
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
         await supabase.from("profiles").update({
           active_organization_id: data.organization_id,
-          active_workspace_id: ws?.id ?? null,
         }).eq("id", user!.id);
 
         await refreshTenant();
       }
+
       setState("done");
       toast.success("You're in!");
       setTimeout(() => navigate("/dashboard", { replace: true }), 600);
