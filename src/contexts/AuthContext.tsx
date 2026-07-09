@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { setActiveTenantHeaders } from "@/integrations/supabase/tenantInvoke";
 import { useNavigate } from "react-router-dom";
 
 interface AuthContextType {
@@ -70,6 +71,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setOrgId(activeOrg);
       setWorkspaceId(activeWs);
       setNeedsOnboarding(!activeOrg);
+      setActiveTenantHeaders(activeOrg, activeWs);
+
 
       // 3. Admin flag = ADMIN or OWNER in the active org.
       if (activeOrg) {
@@ -134,6 +137,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setWorkspaceId(null);
     setIsAdmin(false);
     setNeedsOnboarding(false);
+    setActiveTenantHeaders(null, null);
     navigate("/auth");
   };
 
