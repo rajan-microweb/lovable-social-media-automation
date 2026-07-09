@@ -90,11 +90,11 @@ export default function Onboarding() {
       }
 
       // 6. Set active context
-      await supabase.from("user_context").upsert({
-        user_id: user.id,
+      await supabase.from("profiles").update({
         active_organization_id: org.id,
         active_workspace_id: ws.id,
-      });
+      }).eq("id", user.id);
+
 
       toast.success("Organization created!");
       await refreshTenant();
