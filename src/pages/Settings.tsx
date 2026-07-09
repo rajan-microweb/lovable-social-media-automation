@@ -1,14 +1,18 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NavLink } from "react-router-dom";
-import { CreditCard, ScrollText, Users, UserCircle, Building2 } from "lucide-react";
+import { CreditCard, ScrollText, Users, UserCircle, Building2, Bell, KeyRound, Webhook, BarChart3 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const items = [
   { to: "/settings/organization", icon: Building2, title: "Organization", desc: "Name, timezone, and general settings.", adminOnly: false },
   { to: "/settings/users", icon: Users, title: "Members", desc: "Invite and manage teammates.", adminOnly: true },
   { to: "/settings/billing", icon: CreditCard, title: "Billing & Plans", desc: "Plan, usage, and invoices.", adminOnly: true },
+  { to: "/settings/usage", icon: BarChart3, title: "Usage", desc: "This month's metered consumption.", adminOnly: true },
   { to: "/settings/audit", icon: ScrollText, title: "Audit log", desc: "See recent actions and changes.", adminOnly: true },
+  { to: "/settings/api-keys", icon: KeyRound, title: "API keys", desc: "Programmatic access tokens.", adminOnly: true },
+  { to: "/settings/webhooks", icon: Webhook, title: "Webhooks", desc: "HTTP callbacks on events.", adminOnly: true },
+  { to: "/notifications", icon: Bell, title: "Notifications", desc: "Inbox of recent events.", adminOnly: false },
   { to: "/accounts", icon: UserCircle, title: "Connected accounts", desc: "Social platform integrations.", adminOnly: false },
 ];
 

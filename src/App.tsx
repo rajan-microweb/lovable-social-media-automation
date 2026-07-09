@@ -30,6 +30,10 @@ import AcceptInvite from "./pages/AcceptInvite";
 import Billing from "./pages/Billing";
 import AuditLog from "./pages/AuditLog";
 import OrganizationSettings from "./pages/OrganizationSettings";
+import Notifications from "./pages/Notifications";
+import ApiKeys from "./pages/ApiKeys";
+import Webhooks from "./pages/Webhooks";
+import Usage from "./pages/Usage";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -168,6 +172,22 @@ const App = () => (
             <Route
               path="/settings/audit"
               element={<ProtectedRoute requireAdmin><AuditLog /></ProtectedRoute>}
+            />
+            <Route
+              path="/settings/usage"
+              element={<ProtectedRoute requireAdmin><Usage /></ProtectedRoute>}
+            />
+            <Route
+              path="/settings/api-keys"
+              element={<ProtectedRoute requireAdmin><ApiKeys /></ProtectedRoute>}
+            />
+            <Route
+              path="/settings/webhooks"
+              element={<ProtectedRoute requireAdmin><Webhooks /></ProtectedRoute>}
+            />
+            <Route
+              path="/notifications"
+              element={<ProtectedRoute><Notifications /></ProtectedRoute>}
             />
 
             <Route
