@@ -27,6 +27,9 @@ import History from "./pages/History";
 import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
 import AcceptInvite from "./pages/AcceptInvite";
+import Billing from "./pages/Billing";
+import AuditLog from "./pages/AuditLog";
+import OrganizationSettings from "./pages/OrganizationSettings";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
 
