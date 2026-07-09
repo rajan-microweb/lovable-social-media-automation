@@ -11,7 +11,6 @@ import { toast } from "sonner";
 
 type PlanLimits = {
   max_users?: number | null;
-  max_workspaces?: number | null;
   max_posts_month?: number | null;
   max_media_gb?: number | null;
   ai_credits_month?: number | null;
@@ -39,7 +38,7 @@ export default function Billing() {
   const { orgId, isAdmin } = useAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [sub, setSub] = useState<Sub | null>(null);
-  const [usage, setUsage] = useState({ posts: 0, stories: 0, members: 0, workspaces: 0 });
+  const [usage, setUsage] = useState({ posts: 0, stories: 0, members: 0 });
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState<string | null>(null);
 
