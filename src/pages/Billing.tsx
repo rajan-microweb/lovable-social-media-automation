@@ -177,7 +177,7 @@ export default function Billing() {
             {usageRow("Posts this month", usage.posts, currentPlan?.limits?.max_posts_month ?? null)}
             {usageRow("Stories this month", usage.stories, null)}
             {usageRow("Members", usage.members, currentPlan?.limits?.max_users ?? null)}
-            {usageRow("Workspaces", usage.workspaces, currentPlan?.limits?.max_workspaces ?? null)}
+            
           </CardContent>
         </Card>
 
@@ -211,7 +211,7 @@ export default function Billing() {
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-3.5 w-3.5 text-primary" />
-                        {limits.max_workspaces ? `${limits.max_workspaces} workspaces` : "Unlimited workspaces"}
+                        {limits.max_posts_month ? `${limits.max_posts_month} posts/mo` : "Unlimited posts"}
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-3.5 w-3.5 text-primary" />
