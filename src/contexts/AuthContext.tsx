@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { setActiveTenantHeaders } from "@/integrations/supabase/tenantInvoke";
 import { useNavigate } from "react-router-dom";
 
 interface AuthContextType {
