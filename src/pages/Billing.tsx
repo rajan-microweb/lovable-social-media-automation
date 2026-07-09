@@ -51,7 +51,7 @@ export default function Billing() {
   const load = async () => {
     setLoading(true);
     try {
-      const [plansRes, subRes, postsRes, storiesRes, membersRes, wsRes] = await Promise.all([
+      const [plansRes, subRes, postsRes, storiesRes, membersRes] = await Promise.all([
         supabase.from("plans").select("*").order("price_month", { ascending: true }),
         supabase.from("subscriptions").select("*").eq("organization_id", orgId!).maybeSingle(),
         supabase
@@ -69,10 +69,6 @@ export default function Billing() {
           .select("id", { count: "exact", head: true })
           .eq("organization_id", orgId!)
           .eq("status", "active"),
-        supabase
-          .from("workspaces")
-          .select("id", { count: "exact", head: true })
-          .eq("organization_id", orgId!),
       ]);
 
       const rawPlans = (plansRes.data ?? []) as any[];
@@ -82,7 +78,6 @@ export default function Billing() {
         posts: postsRes.count ?? 0,
         stories: storiesRes.count ?? 0,
         members: membersRes.count ?? 0,
-        workspaces: wsRes.count ?? 0,
       });
     } catch (e: any) {
       console.error(e);
