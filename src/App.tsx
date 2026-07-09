@@ -151,16 +151,25 @@ const App = () => (
             />
             <Route
               path="/settings"
-              element={<Navigate to="/dashboard" replace />}
+              element={<ProtectedRoute><Settings /></ProtectedRoute>}
+            />
+            <Route
+              path="/settings/organization"
+              element={<ProtectedRoute><OrganizationSettings /></ProtectedRoute>}
             />
             <Route
               path="/settings/users"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminUsers />
-                </ProtectedRoute>
-              }
+              element={<ProtectedRoute requireAdmin><AdminUsers /></ProtectedRoute>}
             />
+            <Route
+              path="/settings/billing"
+              element={<ProtectedRoute requireAdmin><Billing /></ProtectedRoute>}
+            />
+            <Route
+              path="/settings/audit"
+              element={<ProtectedRoute requireAdmin><AuditLog /></ProtectedRoute>}
+            />
+
             <Route
               path="/accounts"
               element={

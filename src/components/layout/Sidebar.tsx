@@ -88,13 +88,13 @@ export function AppSidebar() {
       label: "Settings",
       items: [
         { title: "Accounts", url: "/accounts", icon: UserCircle },
+        { title: "Settings", url: "/settings", icon: Settings },
       ],
     },
     {
       label: "Coming Soon",
       items: [
         { title: "Analytics", icon: BarChart3, comingSoon: true },
-        { title: "Settings", icon: Settings, comingSoon: true },
       ],
     },
   ];
