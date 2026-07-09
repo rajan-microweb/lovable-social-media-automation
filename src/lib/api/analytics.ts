@@ -14,17 +14,17 @@ export type PublishingVolumeRow = {
 // Minimal, typed read model for Analytics "publishing volume" charts.
 // UI is responsible for grouping (daily/weekly/monthly) and metric calculations.
 export async function fetchPublishingVolumeRowsForWorkspace(
-  workspaceId: string
+  orgId: string
 ): Promise<PublishingVolumeRow[]> {
   const [{ data: posts, error: postsError }, { data: stories, error: storiesError }] = await Promise.all([
     supabase
       .from("posts")
       .select("id,status,platforms,scheduled_at,created_at,updated_at")
-      .eq("workspace_id", workspaceId),
+      .eq("organization_id", orgId),
     supabase
       .from("stories")
       .select("id,status,platforms,scheduled_at,created_at,updated_at")
-      .eq("workspace_id", workspaceId),
+      .eq("organization_id", orgId),
   ]);
 
   if (postsError) throw postsError;

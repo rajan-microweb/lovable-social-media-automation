@@ -4,7 +4,7 @@ export type PublishJobState = "queued" | "publishing" | "published" | "failed" |
 
 export type PublishJobRow = {
   id: string;
-  workspace_id: string;
+  organization_id: string;
   content_type: "post" | "story";
   content_id: string;
   state: PublishJobState | string;
@@ -23,11 +23,11 @@ export type PublishJobView = PublishJobRow & {
   url?: string | null;
 };
 
-export async function fetchPublishJobsForWorkspace(workspaceId: string): Promise<PublishJobView[]> {
+export async function fetchPublishJobsForWorkspace(orgId: string): Promise<PublishJobView[]> {
   const { data: jobs, error: jobsError } = await supabase
     .from("publish_jobs")
-    .select("id, workspace_id, content_type, content_id, state, run_at, retry_count, last_error")
-    .eq("workspace_id", workspaceId)
+    .select("id, organization_id, content_type, content_id, state, run_at, retry_count, last_error")
+    .eq("organization_id", orgId)
     .order("run_at", { ascending: true });
 
   if (jobsError) throw jobsError;

@@ -116,7 +116,7 @@ const PlatformIcon = ({ platform, link }: { platform: string, link?: string | nu
 type HistoryMode = "all" | "posts" | "stories";
 
 export default function History() {
-  const { workspaceId } = useAuth();
+  const { orgId } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -149,11 +149,11 @@ export default function History() {
   const [jobs, setJobs] = useState<PublishJobView[]>([]);
 
   const refreshJobs = async () => {
-    if (!workspaceId) return;
+    if (!orgId) return;
     setLoading(true);
     setError(null);
     try {
-      const rows = await fetchPublishJobsForWorkspace(workspaceId);
+      const rows = await fetchPublishJobsForWorkspace(orgId);
       setJobs(rows);
       
       // Calculate Stats
@@ -183,7 +183,7 @@ export default function History() {
 
   useEffect(() => {
     void refreshJobs();
-  }, [workspaceId]);
+  }, [orgId]);
 
   useEffect(() => {
     setCurrentPage(1);

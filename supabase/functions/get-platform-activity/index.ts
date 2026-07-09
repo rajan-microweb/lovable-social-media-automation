@@ -96,7 +96,7 @@ interface PlatformActivityItem {
 }
 
 type AnalyticsPlatformActivityRequest = {
-  workspace_id?: string;
+  organization_id?: string;
   platforms?: string[];
   date_from?: string; // ISO
   date_to?: string; // ISO
@@ -125,14 +125,14 @@ function normalizePlatforms(platforms: unknown): string[] | undefined {
 }
 
 function activityToSnapshotRow(
-  workspaceId: string,
+  orgId: string,
   sourceUserId: string,
   activity: PlatformActivityItem,
 ): Record<string, unknown> {
   const engagement = activity.engagement ?? {};
 
   return {
-    workspace_id: workspaceId,
+    organization_id: orgId,
     user_id: sourceUserId,
     platform: activity.platform,
     account_id: activity.accountId,
@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
       const maxAgeSeconds = url.searchParams.get("max_age_seconds");
       const limit = url.searchParams.get("limit");
       payload = {
-        workspace_id: url.searchParams.get("workspace_id") ?? undefined,
+        organization_id: url.searchParams.get("organization_id") ?? undefined,
         platforms: url.searchParams.get("platforms")?.split(",") ?? undefined,
         date_from: url.searchParams.get("date_from") ?? undefined,
         date_to: url.searchParams.get("date_to") ?? undefined,
@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
     // Use service role client for decryption + snapshot persistence
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const effectiveWorkspaceId = payload.workspace_id ?? user.id;
+    const effectiveWorkspaceId = payload.organization_id ?? user.id;
     const requestedPlatforms = normalizePlatforms(payload.platforms);
     const now = Date.now();
     const maxAgeSeconds = typeof payload.max_age_seconds === "number" ? payload.max_age_seconds : 3600;
@@ -256,7 +256,7 @@ Deno.serve(async (req) => {
       .select(
         "platform, account_id, platform_content_id, account_name, content, media_url, permalink, published_at, engagement_likes, engagement_comments, engagement_shares, engagement_views, fetched_at",
       )
-      .eq("workspace_id", effectiveWorkspaceId)
+      .eq("organization_id", effectiveWorkspaceId)
       .gte("published_at", dateFrom.toISOString())
       .lte("published_at", dateTo.toISOString())
       .order("fetched_at", { ascending: false })
@@ -303,12 +303,12 @@ Deno.serve(async (req) => {
     // -----------------------------
     // For workspace analytics, include all workspace members.
     let memberUserIds = [user.id];
-    if (payload.workspace_id) {
+    if (payload.organization_id) {
       // Ensure the requester is a member of the workspace.
       const { data: memberCheck, error: memberCheckError } = await supabase
         .from("workspace_members")
         .select("user_id")
-        .eq("workspace_id", effectiveWorkspaceId)
+        .eq("organization_id", effectiveWorkspaceId)
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -323,7 +323,7 @@ Deno.serve(async (req) => {
       const { data: memberRows, error: memberRowsError } = await supabase
         .from("workspace_members")
         .select("user_id")
-        .eq("workspace_id", effectiveWorkspaceId);
+        .eq("organization_id", effectiveWorkspaceId);
 
       if (memberRowsError) throw memberRowsError;
       memberUserIds = (memberRows || []).map((r: any) => String(r.user_id));
@@ -400,7 +400,7 @@ Deno.serve(async (req) => {
       const { error: upsertError } = await supabase
         .from("analytics_platform_activity_snapshots")
         .upsert(rowsToUpsert, {
-          onConflict: "workspace_id,user_id,platform,account_id,platform_content_id",
+          onConflict: "organization_id,user_id,platform,account_id,platform_content_id",
         });
 
       if (upsertError) {

@@ -61,7 +61,7 @@ const MEDIA_FOLDERS: Array<{ folder: string; contentType: MediaContentType }> = 
 ];
 
 export default function Library() {
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -118,7 +118,7 @@ export default function Library() {
   };
 
   const loadAssets = async () => {
-    if (!user || !workspaceId) return;
+    if (!user || !orgId) return;
 
     setLoading(true);
     try {
@@ -163,7 +163,7 @@ export default function Library() {
           // Table is newer than the checked-in generated types, so cast to avoid TS friction.
           .from("media_assets" as any)
           .select("file_path,tags")
-          .eq("workspace_id", workspaceId)
+          .eq("organization_id", orgId)
           .in("file_path", filePaths)) as any;
 
         if (rows) {
@@ -189,7 +189,7 @@ export default function Library() {
       toast.error("Failed to load media library");
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, workspaceId]);
+  }, [user?.id, orgId]);
 
   const startEditTags = (asset: MediaAsset) => {
     setEditingTagsFor(asset.filePath);
@@ -197,7 +197,7 @@ export default function Library() {
   };
 
   const saveTags = async (asset: MediaAsset) => {
-    if (!user || !workspaceId) return;
+    if (!user || !orgId) return;
 
     setSavingTags(true);
     try {
@@ -211,14 +211,14 @@ export default function Library() {
         .from("media_assets" as any)
         .upsert(
           {
-            workspace_id: workspaceId,
+            organization_id: orgId,
             user_id: user.id,
             file_path: asset.filePath,
             file_url: asset.fileUrl,
             content_type: asset.contentType,
             tags: nextTags,
           },
-          { onConflict: "workspace_id,file_path" }
+          { onConflict: "organization_id,file_path" }
         );
 
       if (error) throw error;
@@ -237,7 +237,7 @@ export default function Library() {
   };
 
   const deleteAsset = async (asset: MediaAsset) => {
-    if (!user || !workspaceId) return;
+    if (!user || !orgId) return;
 
     try {
       setLoading(true);
@@ -252,7 +252,7 @@ export default function Library() {
       const { error: dbError } = await (supabase as any)
         .from("media_assets" as any)
         .delete()
-        .eq("workspace_id", workspaceId)
+        .eq("organization_id", orgId)
         .eq("file_path", asset.filePath);
       if (dbError) throw dbError;
 
@@ -267,7 +267,7 @@ export default function Library() {
   };
 
   const handleBulkDelete = async () => {
-    if (!user || !workspaceId || selectedPaths.length === 0) return;
+    if (!user || !orgId || selectedPaths.length === 0) return;
     
     setLoading(true);
     try {
@@ -284,7 +284,7 @@ export default function Library() {
           await (supabase as any)
             .from("media_assets" as any)
             .delete()
-            .eq("workspace_id", workspaceId)
+            .eq("organization_id", orgId)
             .eq("file_path", filePath);
           
           successCount++;
@@ -305,7 +305,7 @@ export default function Library() {
   };
 
   const handleUpload = async (file: File) => {
-    if (!user || !workspaceId) return;
+    if (!user || !orgId) return;
 
     const mime = file.type;
     const fileNameLower = file.name.toLowerCase();
@@ -350,7 +350,7 @@ export default function Library() {
       const { error: dbError } = await (supabase as any)
         .from("media_assets" as any)
         .insert({
-          workspace_id: workspaceId,
+          organization_id: orgId,
           user_id: user.id,
           file_path: filePath,
           file_url: publicUrl,
@@ -380,7 +380,7 @@ export default function Library() {
     }
   };
 
-  if (!user || !workspaceId) {
+  if (!user || !orgId) {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">

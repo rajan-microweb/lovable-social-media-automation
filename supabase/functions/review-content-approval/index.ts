@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const reviewApprovalSchema = z.object({
-  workspace_id: z.string().uuid().optional(), // ignored, derived from reviewer
+  organization_id: z.string().uuid().optional(), // ignored, derived from reviewer
   content_type: z.enum(["post", "story"]),
   content_id: z.string().uuid(),
   decision: z.enum(["approved", "rejected"]),
@@ -57,14 +57,14 @@ Deno.serve(async (req) => {
 
     const { content_type, content_id, decision, note } = parsed.data;
 
-    // workspace_id = reviewer's user_id for personal workspaces
-    const workspace_id = reviewerId;
+    // organization_id = reviewer's user_id for personal workspaces
+    const organization_id = reviewerId;
 
     // Enforce workspace admin-only reviews.
     const { data: adminMembership, error: membershipError } = await supabaseAdmin
       .from("workspace_members")
       .select("role")
-      .eq("workspace_id", workspace_id)
+      .eq("organization_id", organization_id)
       .eq("user_id", reviewerId)
       .eq("role", "ADMIN")
       .maybeSingle();
@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     // Load the content and validate it's pending approval.
     const { data: contentRow, error: contentError } = await supabaseAdmin
       .from(table)
-      .select("id,status,workspace_id,scheduled_at,user_id,recurrence_frequency,recurrence_until")
+      .select("id,status,organization_id,scheduled_at,user_id,recurrence_frequency,recurrence_until")
       .eq("id", content_id)
       .maybeSingle();
 
@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (contentRow.workspace_id !== workspace_id) {
+    if (contentRow.organization_id !== organization_id) {
       return new Response(
         JSON.stringify({ error: "Content does not belong to the provided workspace" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
       .from(table)
       .update(updatePayload)
       .eq("id", content_id)
-      .eq("workspace_id", workspace_id);
+      .eq("organization_id", organization_id);
 
     if (updateContentError) {
       return new Response(
@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
       .from("content_reviews")
       .upsert(
         {
-          workspace_id,
+          organization_id,
           kind: "approval",
           content_type,
           content_id,

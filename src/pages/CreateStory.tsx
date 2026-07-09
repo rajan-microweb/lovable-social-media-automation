@@ -44,7 +44,7 @@ const storySchema = z.object({
 });
 
 export default function CreateStory() {
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
@@ -55,7 +55,7 @@ export default function CreateStory() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [pendingTemplate, setPendingTemplate] = useState<any | null>(null);
   const { data: templatesData, isLoading: templatesLoading, isFetching: templatesFetching } = useTemplates({
-    workspaceId: workspaceId || undefined,
+    orgId: orgId || undefined,
     kind: "story",
     includeGlobal: true,
     sort: "updated_desc",
@@ -290,7 +290,7 @@ export default function CreateStory() {
     setLoading(true);
 
     try {
-      if (!user || !workspaceId) {
+      if (!user || !orgId) {
         toast.error("Workspace not ready. Please try again.");
         return;
       }
@@ -344,7 +344,7 @@ export default function CreateStory() {
 
       const { error } = await supabase.from("stories").insert({
         user_id: user!.id,
-        workspace_id: workspaceId,
+        organization_id: orgId,
         title: "",
         type_of_story: storyData.type_of_story,
         platforms: storyData.platforms,

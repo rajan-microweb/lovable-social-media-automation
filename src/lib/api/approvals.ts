@@ -6,7 +6,7 @@ export type ApprovalDecision = "approved" | "rejected";
 
 export type ContentApprovalItem = {
   id: string;
-  workspace_id: string;
+  organization_id: string;
   content_type: ContentType;
   content_id: string;
   approval_status: ContentApprovalStatus;
@@ -28,13 +28,13 @@ function fallbackTitle(opts: { contentType: ContentType; text?: string | null; t
   return contentType === "post" ? "(Untitled post)" : "(Untitled story)";
 }
 
-export async function fetchPendingApprovalsForWorkspace(workspaceId: string): Promise<ContentApprovalItem[]> {
+export async function fetchPendingApprovalsForWorkspace(orgId: string): Promise<ContentApprovalItem[]> {
   const { data: approvals, error: approvalsError } = await supabase
     .from("content_reviews")
     .select(
-      "id,workspace_id,content_type,content_id,status,requested_by,requested_at,note,reviewed_by,reviewed_at"
+      "id,organization_id,content_type,content_id,status,requested_by,requested_at,note,reviewed_by,reviewed_at"
     )
-    .eq("workspace_id", workspaceId)
+    .eq("organization_id", orgId)
     .eq("kind", "approval")
     .eq("status", "pending")
     .order("requested_at", { ascending: false });
@@ -78,7 +78,7 @@ export async function fetchPendingApprovalsForWorkspace(workspaceId: string): Pr
 }
 
 export async function reviewContentApproval(params: {
-  workspaceId: string;
+  orgId: string;
   contentType: ContentType;
   contentId: string;
   decision: ApprovalDecision;

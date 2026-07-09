@@ -214,7 +214,7 @@ function RecentItemsList({
 }
 
 export default function Dashboard() {
-  const { user, isAdmin, workspaceId } = useAuth();
+  const { user, isAdmin, orgId } = useAuth();
   const navigate = useNavigate();
   const [profileName, setProfileName] = useState<string>("");
   const [activeTab, setActiveTab] = useState<DashboardTab>("posts");
@@ -240,7 +240,7 @@ export default function Dashboard() {
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   const refresh = useCallback(async () => {
-    if (!user || !workspaceId) return;
+    if (!user || !orgId) return;
 
     setStatsLoading(true);
     setActivityLoading(true);
@@ -248,9 +248,9 @@ export default function Dashboard() {
     const fetchStats = async () => {
       try {
         const [postsRes, storiesRes, jobs] = await Promise.all([
-          supabase.from("posts").select("status").eq("workspace_id", workspaceId),
-          supabase.from("stories").select("status").eq("workspace_id", workspaceId),
-          fetchPublishJobsForWorkspace(workspaceId),
+          supabase.from("posts").select("status").eq("organization_id", orgId),
+          supabase.from("stories").select("status").eq("organization_id", orgId),
+          fetchPublishJobsForWorkspace(orgId),
         ]);
 
         const posts = postsRes.data || [];
@@ -294,13 +294,13 @@ export default function Dashboard() {
           supabase
             .from("posts")
             .select("id,title,status,platforms,updated_at,created_at")
-            .eq("workspace_id", workspaceId)
+            .eq("organization_id", orgId)
             .order("updated_at", { ascending: false })
             .limit(10),
           supabase
             .from("stories")
             .select("id,title,status,platforms,updated_at,created_at")
-            .eq("workspace_id", workspaceId)
+            .eq("organization_id", orgId)
             .order("updated_at", { ascending: false })
             .limit(10),
         ]);
@@ -367,7 +367,7 @@ export default function Dashboard() {
       setStatsLoading(false);
       setActivityLoading(false);
     }
-  }, [user, workspaceId]);
+  }, [user, orgId]);
 
   useEffect(() => {
     void refresh();

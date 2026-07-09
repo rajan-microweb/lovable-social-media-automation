@@ -11,7 +11,7 @@ import {
 } from "@/lib/api/templates";
 
 type UseTemplatesParams = {
-  workspaceId?: string;
+  orgId?: string;
   kind?: TemplateKind;
   includeGlobal?: boolean;
   search?: string;
@@ -25,11 +25,11 @@ export function useTemplates(params: UseTemplatesParams) {
   return useQuery({
     queryKey: ["templates", params],
     queryFn: async () => {
-      if (!params.workspaceId) {
+      if (!params.orgId) {
         return { items: [], total: 0 };
       }
       return listTemplates({
-        workspaceId: params.workspaceId,
+        orgId: params.orgId,
         kind: params.kind,
         includeGlobal: params.includeGlobal,
         search: params.search,
@@ -39,14 +39,14 @@ export function useTemplates(params: UseTemplatesParams) {
         pageSize: params.pageSize,
       });
     },
-    enabled: Boolean(params.workspaceId),
+    enabled: Boolean(params.orgId),
     staleTime: 1000 * 60 * 3,
   });
 }
 
 type SavePayload = {
   id?: string;
-  workspaceId: string;
+  orgId: string;
   kind: TemplateKind;
   template_name: string;
   type_of_post?: string | null;
@@ -54,7 +54,7 @@ type SavePayload = {
   overrides: Record<string, any>;
 };
 
-export function useTemplateMutations(workspaceId?: string) {
+export function useTemplateMutations(orgId?: string) {
   const queryClient = useQueryClient();
 
   const invalidate = async () => {
@@ -73,16 +73,16 @@ export function useTemplateMutations(workspaceId?: string) {
 
   const removeTemplate = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
-      if (!workspaceId) throw new Error("Workspace not available.");
-      return deleteTemplate(id, workspaceId);
+      if (!orgId) throw new Error("Workspace not available.");
+      return deleteTemplate(id, orgId);
     },
     onSuccess: invalidate,
   });
 
   const cloneTemplate = useMutation({
     mutationFn: async ({ template }: { template: ContentTemplate }) => {
-      if (!workspaceId) throw new Error("Workspace not available.");
-      return duplicateTemplate(template, workspaceId);
+      if (!orgId) throw new Error("Workspace not available.");
+      return duplicateTemplate(template, orgId);
     },
     onSuccess: invalidate,
   });

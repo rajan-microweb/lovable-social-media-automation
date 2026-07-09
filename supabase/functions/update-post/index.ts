@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { post_id, user_id, workspace_id: _ignored, ...rawUpdateData } = body;
+    const { post_id, user_id, organization_id: _ignored, ...rawUpdateData } = body;
 
     if (!user_id) {
       return new Response(
@@ -85,8 +85,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // workspace_id = user_id for personal workspaces
-    const workspace_id = user_id;
+    // organization_id = user_id for personal workspaces
+    const organization_id = user_id;
 
     if (!post_id) {
       return new Response(
@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     const { data: membership, error: membershipError } = await supabase
       .from('workspace_members')
       .select('user_id')
-      .eq('workspace_id', workspace_id)
+      .eq('organization_id', organization_id)
       .eq('user_id', user_id)
       .maybeSingle();
 
@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     // Verify post belongs to workspace
     const { data: post, error: fetchError } = await supabase
       .from('posts')
-      .select('workspace_id')
+      .select('organization_id')
       .eq('id', post_id)
       .single();
 
@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (post.workspace_id !== workspace_id) {
+    if (post.organization_id !== organization_id) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized - Wrong workspace' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
       .from('posts')
       .update(updateData)
       .eq('id', post_id)
-      .eq('workspace_id', workspace_id)
+      .eq('organization_id', organization_id)
       .select()
       .single();
 

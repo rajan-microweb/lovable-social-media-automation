@@ -57,7 +57,7 @@ const postSchema = z.object({
 
 export default function EditPost() {
   const { id } = useParams();
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -138,14 +138,14 @@ export default function EditPost() {
 
   // Fetch existing post data
   useEffect(() => {
-    if (!user || !workspaceId || !id) return;
+    if (!user || !orgId || !id) return;
 
     const fetchPost = async () => {
       const { data, error } = await supabase
         .from("posts")
         .select("*")
         .eq("id", id)
-        .eq("workspace_id", workspaceId)
+        .eq("organization_id", orgId)
         .maybeSingle();
 
       if (error || !data) {
@@ -230,7 +230,7 @@ export default function EditPost() {
     };
 
     fetchPost();
-  }, [user, workspaceId, id, navigate]);
+  }, [user, orgId, id, navigate]);
 
   // Reset form when type changes
   useEffect(() => {
@@ -344,7 +344,7 @@ export default function EditPost() {
     setUploading(true);
 
     try {
-      if (!user || !workspaceId) {
+      if (!user || !orgId) {
         toast.error("Workspace not ready");
         return;
       }
@@ -446,7 +446,7 @@ export default function EditPost() {
           recurrence_until: data.recurrence_until ?? null,
         })
         .eq("id", id)
-        .eq("workspace_id", workspaceId);
+        .eq("organization_id", orgId);
 
       if (error) throw error;
 

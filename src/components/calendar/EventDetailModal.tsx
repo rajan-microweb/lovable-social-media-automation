@@ -90,7 +90,7 @@ function getTypeConfig(type: string | null) {
 
 export function EventDetailModal({ event, open, onOpenChange, onDelete, onAfterReview }: EventDetailModalProps) {
   const navigate = useNavigate();
-  const { workspaceId, isAdmin } = useAuth();
+  const { orgId, isAdmin } = useAuth();
 
   const [reviewLoading, setReviewLoading] = useState<"approved" | "rejected" | null>(null);
 
@@ -119,12 +119,12 @@ export function EventDetailModal({ event, open, onOpenChange, onDelete, onAfterR
   };
 
   const handleReview = async (decision: "approved" | "rejected") => {
-    if (!workspaceId || !isAdmin) return;
+    if (!orgId || !isAdmin) return;
 
     setReviewLoading(decision);
     try {
       await reviewContentApproval({
-        workspaceId,
+        orgId,
         contentType: event.kind,
         contentId: event.id,
         decision,

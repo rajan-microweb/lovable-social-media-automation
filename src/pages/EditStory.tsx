@@ -44,7 +44,7 @@ const storySchema = z.object({
 
 export default function EditStory() {
   const { id } = useParams();
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -108,10 +108,10 @@ export default function EditStory() {
   }, [user]);
 
   useEffect(() => {
-    if (id && user && workspaceId) {
+    if (id && user && orgId) {
       fetchStory();
     }
-  }, [id, user, workspaceId]);
+  }, [id, user, orgId]);
 
   const fetchStory = async () => {
     try {
@@ -119,7 +119,7 @@ export default function EditStory() {
         .from("stories")
         .select("*")
         .eq("id", id)
-        .eq("workspace_id", workspaceId)
+        .eq("organization_id", orgId)
         .single();
 
       if (error) throw error;
@@ -263,7 +263,7 @@ export default function EditStory() {
     setLoading(true);
 
     try {
-      if (!user || !workspaceId) {
+      if (!user || !orgId) {
         toast.error("Workspace not ready");
         return;
       }
@@ -322,7 +322,7 @@ export default function EditStory() {
       const { data: updateResult, error } = await supabase.functions.invoke('update-story', {
         body: {
           story_id: id,
-          workspace_id: workspaceId,
+          organization_id: orgId,
           type_of_story: storyData.type_of_story,
           platforms: storyData.platforms,
           account_type: storyData.account_type ?? null,

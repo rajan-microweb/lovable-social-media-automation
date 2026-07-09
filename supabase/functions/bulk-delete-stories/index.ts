@@ -5,7 +5,7 @@ Deno.serve(async (req) => {
 
   const ctx = await resolveTenantContext(req, { requireWorkspace: true });
   if (!ctx.ok) return ctx.response;
-  const { workspaceId, supabase } = ctx;
+  const { orgId, supabase } = ctx;
 
   try {
     const { story_ids } = await req.json();
@@ -18,12 +18,12 @@ Deno.serve(async (req) => {
 
     const { data: stories, error: fetchError } = await supabase
       .from("stories")
-      .select("id, workspace_id, image, video")
+      .select("id, organization_id, image, video")
       .in("id", story_ids);
     if (fetchError) return jsonResponse({ error: "Failed to verify story ownership" }, 500);
 
     const rows = stories ?? [];
-    const unauthorized = rows.filter((s) => s.workspace_id !== workspaceId);
+    const unauthorized = rows.filter((s) => s.organization_id !== orgId);
     if (unauthorized.length > 0 || rows.length !== story_ids.length) {
       return jsonResponse({ error: "You can only delete stories from the active workspace" }, 403);
     }
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
       .from("stories")
       .delete()
       .in("id", story_ids)
-      .eq("workspace_id", workspaceId);
+      .eq("organization_id", orgId);
     if (delErr) return jsonResponse({ error: "Failed to delete stories" }, 500);
 
     await ctx.writeAudit("stories.bulk_delete", "stories", undefined, { count: story_ids.length });

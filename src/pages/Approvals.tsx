@@ -15,20 +15,20 @@ const APPROVALS_ENABLED = import.meta.env.VITE_ENABLE_APPROVALS === "true";
 
 export default function Approvals() {
   const navigate = useNavigate();
-  const { workspaceId, isAdmin } = useAuth();
+  const { orgId, isAdmin } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<ContentApprovalItem[]>([]);
 
-  const canReview = Boolean(workspaceId) && isAdmin;
+  const canReview = Boolean(orgId) && isAdmin;
 
   const refresh = async () => {
-    if (!workspaceId) return;
+    if (!orgId) return;
     setLoading(true);
     setError(null);
     try {
-      const rows = await fetchPendingApprovalsForWorkspace(workspaceId);
+      const rows = await fetchPendingApprovalsForWorkspace(orgId);
       setApprovals(rows);
     } catch (e) {
       console.error(e);
@@ -43,12 +43,12 @@ export default function Approvals() {
     if (!APPROVALS_ENABLED) return;
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [APPROVALS_ENABLED, workspaceId]);
+  }, [APPROVALS_ENABLED, orgId]);
 
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const handleDecision = async (item: ContentApprovalItem, decision: "approved" | "rejected") => {
-    if (!workspaceId) return;
+    if (!orgId) return;
     if (!isAdmin) {
       toast.error("Only workspace admins can review approvals.");
       return;
@@ -57,7 +57,7 @@ export default function Approvals() {
     setActionLoadingId(item.id);
     try {
       await reviewContentApproval({
-        workspaceId,
+        orgId,
         contentType: item.content_type,
         contentId: item.content_id,
         decision,
@@ -76,10 +76,10 @@ export default function Approvals() {
 
   const headerSubtitle = useMemo(() => {
     if (!APPROVALS_ENABLED) return "";
-    if (!workspaceId) return "Select a workspace to review approvals.";
+    if (!orgId) return "Select a workspace to review approvals.";
     if (isAdmin) return "Review pending workspace approvals.";
     return "You can view pending approvals (review restricted to admins).";
-  }, [workspaceId, isAdmin]);
+  }, [orgId, isAdmin]);
 
   if (!APPROVALS_ENABLED) {
     return (
@@ -116,7 +116,7 @@ export default function Approvals() {
             <p className="text-muted-foreground">{headerSubtitle}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading || !workspaceId}>
+            <Button variant="outline" onClick={() => void refresh()} disabled={loading || !orgId}>
               {loading ? "Loading…" : "Refresh"}
             </Button>
           </div>
