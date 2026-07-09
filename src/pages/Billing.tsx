@@ -180,10 +180,10 @@ export default function Billing() {
             )}
           </CardHeader>
           <CardContent className="space-y-3">
-            {usageRow("Posts this month", usage.posts, currentPlan?.max_posts_month ?? null)}
+            {usageRow("Posts this month", usage.posts, currentPlan?.limits?.max_posts_month ?? null)}
             {usageRow("Stories this month", usage.stories, null)}
-            {usageRow("Members", usage.members, currentPlan?.max_users ?? null)}
-            {usageRow("Workspaces", usage.workspaces, currentPlan?.max_workspaces ?? null)}
+            {usageRow("Members", usage.members, currentPlan?.limits?.max_users ?? null)}
+            {usageRow("Workspaces", usage.workspaces, currentPlan?.limits?.max_workspaces ?? null)}
           </CardContent>
         </Card>
 
@@ -193,6 +193,8 @@ export default function Billing() {
             {plans.map((p) => {
               const isCurrent = p.id === currentPlan?.id;
               const features = Array.isArray(p.features) ? p.features : [];
+              const limits = p.limits ?? {};
+              const pricePerMonth = (p.price_monthly_cents / 100).toFixed(0);
               return (
                 <Card key={p.id} className={isCurrent ? "border-primary shadow-md" : ""}>
                   <CardHeader>
@@ -202,7 +204,7 @@ export default function Billing() {
                     </div>
                     <CardDescription>
                       <span className="text-2xl font-bold text-foreground">
-                        {p.currency.toUpperCase()} {p.price_month}
+                        ${pricePerMonth}
                       </span>
                       <span className="text-muted-foreground text-sm"> /month</span>
                     </CardDescription>
@@ -211,20 +213,20 @@ export default function Billing() {
                     <ul className="space-y-1.5 text-sm">
                       <li className="flex items-center gap-2">
                         <Check className="h-3.5 w-3.5 text-primary" />
-                        {p.max_users ? `${p.max_users} members` : "Unlimited members"}
+                        {limits.max_users ? `${limits.max_users} members` : "Unlimited members"}
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-3.5 w-3.5 text-primary" />
-                        {p.max_workspaces ? `${p.max_workspaces} workspaces` : "Unlimited workspaces"}
+                        {limits.max_workspaces ? `${limits.max_workspaces} workspaces` : "Unlimited workspaces"}
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-3.5 w-3.5 text-primary" />
-                        {p.max_posts_month ? `${p.max_posts_month} posts/mo` : "Unlimited posts"}
+                        {limits.max_posts_month ? `${limits.max_posts_month} posts/mo` : "Unlimited posts"}
                       </li>
-                      {p.ai_credits_month != null && (
+                      {limits.ai_credits_month != null && (
                         <li className="flex items-center gap-2">
                           <Check className="h-3.5 w-3.5 text-primary" />
-                          {p.ai_credits_month} AI credits/mo
+                          {limits.ai_credits_month} AI credits/mo
                         </li>
                       )}
                       {features.slice(0, 3).map((f: string, i: number) => (
@@ -234,6 +236,7 @@ export default function Billing() {
                         </li>
                       ))}
                     </ul>
+
                     <Button
                       className="w-full"
                       variant={isCurrent ? "outline" : "default"}
