@@ -1,25 +1,38 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/components/ThemeProvider";
 import { toast } from "sonner";
+import { formatDistanceToNow, format } from "date-fns";
 import {
   Settings2,
   Building2,
-  Plug,
   KeyRound,
   Activity,
-  Webhook,
   Palette,
   Bell,
-  Shield,
   Loader2,
   Save,
   Trash2,
@@ -27,20 +40,13 @@ import {
   Sun,
   Moon,
   Monitor,
-  ArrowRight,
+  Copy,
+  Check,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type SectionId =
-  | "general"
-  | "integrations"
-  | "api-keys"
-  | "activity"
-  | "webhooks"
-  | "appearance"
-  | "notifications"
-  | "security";
+type SectionId = "general" | "api-keys" | "activity" | "appearance" | "notifications";
 
 type NavItem = {
   id: SectionId;
@@ -57,15 +63,8 @@ const NAV: NavGroup[] = [
     label: "Workspace",
     items: [
       { id: "general", label: "General", icon: Building2, iconTint: "text-indigo-500 bg-indigo-500/10" },
-      { id: "integrations", label: "Integrations", icon: Plug, iconTint: "text-violet-500 bg-violet-500/10" },
-    ],
-  },
-  {
-    label: "Growth",
-    items: [
       { id: "api-keys", label: "API Keys", icon: KeyRound, iconTint: "text-amber-500 bg-amber-500/10", adminOnly: true },
       { id: "activity", label: "Activity", icon: Activity, iconTint: "text-emerald-500 bg-emerald-500/10", adminOnly: true },
-      { id: "webhooks", label: "Webhooks", icon: Webhook, iconTint: "text-sky-500 bg-sky-500/10", adminOnly: true },
     ],
   },
   {
@@ -73,7 +72,6 @@ const NAV: NavGroup[] = [
     items: [
       { id: "appearance", label: "Appearance", icon: Palette, iconTint: "text-pink-500 bg-pink-500/10" },
       { id: "notifications", label: "Notifications", icon: Bell, iconTint: "text-orange-500 bg-orange-500/10" },
-      { id: "security", label: "Security", icon: Shield, iconTint: "text-rose-500 bg-rose-500/10" },
     ],
   },
 ];
@@ -81,12 +79,15 @@ const NAV: NavGroup[] = [
 export default function Settings() {
   const { orgId, isAdmin } = useAuth();
   const [params, setParams] = useSearchParams();
-  const initial = (params.get("s") as SectionId) || "general";
-  const [active, setActive] = useState<SectionId>(initial);
+  const requested = params.get("s") as SectionId | null;
+  const isValid = requested && NAV.some((g) => g.items.some((i) => i.id === requested));
+  const [active, setActive] = useState<SectionId>(isValid ? (requested as SectionId) : "general");
 
   useEffect(() => {
-    setParams({ s: active }, { replace: true });
-  }, [active, setParams]);
+    if (params.get("s") !== active) {
+      setParams({ s: active }, { replace: true });
+    }
+  }, [active, params, setParams]);
 
   return (
     <DashboardLayout>
@@ -158,65 +159,43 @@ export default function Settings() {
           {/* Content */}
           <section className="min-w-0">
             {active === "general" && <GeneralSection orgId={orgId} isAdmin={isAdmin} />}
-            {active === "integrations" && (
-              <LinkSection
-                title="Integrations"
-                subtitle="Connect and manage social platform integrations."
-                icon={Plug}
-                href="/accounts"
-                cta="Open integrations"
-              />
-            )}
-            {active === "api-keys" && (
-              <LinkSection
-                title="API Keys"
-                subtitle="Create and rotate programmatic access tokens."
-                icon={KeyRound}
-                href="/settings/api-keys"
-                cta="Manage API keys"
-              />
-            )}
-            {active === "activity" && (
-              <LinkSection
-                title="Activity"
-                subtitle="Audit log of every recent action in your organization."
-                icon={Activity}
-                href="/settings/audit"
-                cta="View activity log"
-              />
-            )}
-            {active === "webhooks" && (
-              <LinkSection
-                title="Webhooks"
-                subtitle="Send HTTP callbacks when key events happen."
-                icon={Webhook}
-                href="/settings/webhooks"
-                cta="Manage webhooks"
-              />
-            )}
+            {active === "api-keys" && <ApiKeysSection orgId={orgId} />}
+            {active === "activity" && <ActivitySection orgId={orgId} />}
             {active === "appearance" && <AppearanceSection />}
-            {active === "notifications" && (
-              <LinkSection
-                title="Notifications"
-                subtitle="Review recent events in your inbox."
-                icon={Bell}
-                href="/notifications"
-                cta="Open inbox"
-              />
-            )}
-            {active === "security" && (
-              <LinkSection
-                title="Security"
-                subtitle="Password, sessions, and login activity."
-                icon={Shield}
-                href="/profile"
-                cta="Manage security"
-              />
-            )}
+            {active === "notifications" && <NotificationsSection orgId={orgId} />}
           </section>
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+/* ----------------- Shared header ----------------- */
+
+function SectionHeader({
+  title,
+  description,
+  eyebrow,
+  action,
+}: {
+  title: string;
+  description: string;
+  eyebrow?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-6 flex items-start justify-between gap-4">
+      <div>
+        {eyebrow && (
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+            {eyebrow}
+          </div>
+        )}
+        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
+      </div>
+      {action}
+    </div>
   );
 }
 
@@ -230,28 +209,6 @@ type Org = {
   timezone: string | null;
   country: string | null;
 };
-
-function SectionHeader({
-  title,
-  description,
-  eyebrow,
-}: {
-  title: string;
-  description: string;
-  eyebrow?: string;
-}) {
-  return (
-    <div className="mb-6">
-      {eyebrow && (
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-          {eyebrow}
-        </div>
-      )}
-      <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-      <p className="text-sm text-muted-foreground mt-1">{description}</p>
-    </div>
-  );
-}
 
 function GeneralSection({ orgId, isAdmin }: { orgId: string | null; isAdmin: boolean }) {
   const { refreshTenant } = useAuth();
@@ -316,7 +273,7 @@ function GeneralSection({ orgId, isAdmin }: { orgId: string | null; isAdmin: boo
 
       <Card className="border-2 shadow-sm">
         <CardHeader className="flex-row items-start gap-4 space-y-0">
-          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary font-bold">
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-primary font-bold overflow-hidden">
             {logoUrl ? (
               <img src={logoUrl} alt="" className="h-11 w-11 rounded-xl object-cover" />
             ) : (
@@ -385,6 +342,294 @@ function GeneralSection({ orgId, isAdmin }: { orgId: string | null; isAdmin: boo
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/* ----------------- API Keys ----------------- */
+
+interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[] | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+function ApiKeysSection({ orgId }: { orgId: string | null }) {
+  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [newKey, setNewKey] = useState<string | null>(null);
+
+  const load = async () => {
+    if (!orgId) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("api_keys")
+      .select("id, name, key_prefix, scopes, last_used_at, revoked_at, created_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+    if (error) toast.error(error.message);
+    else setKeys((data ?? []) as ApiKey[]);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
+
+  const createKey = async () => {
+    if (!name.trim()) return toast.error("Give the key a name");
+    setCreating(true);
+    const { data, error } = await supabase.functions.invoke("create-api-key", {
+      body: { name: name.trim() },
+    });
+    setCreating(false);
+    if (error || !data?.success) {
+      toast.error(error?.message || data?.error || "Failed to create key");
+      return;
+    }
+    setNewKey(data.data.api_key);
+    setName("");
+    load();
+  };
+
+  const revoke = async (id: string) => {
+    if (!confirm("Revoke this key? Requests using it will start failing.")) return;
+    const { error } = await supabase
+      .from("api_keys")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Key revoked");
+    load();
+  };
+
+  return (
+    <div>
+      <SectionHeader
+        eyebrow="Growth"
+        title="API Keys"
+        description="Programmatic access to your organization."
+      />
+
+      <Card className="border-2 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Create new key</CardTitle>
+          <CardDescription>Name it after where you'll use it, e.g. "n8n production".</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row gap-3 sm:items-end">
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="key-name">Name</Label>
+            <Input
+              id="key-name"
+              placeholder="e.g. n8n production"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <Button onClick={createKey} disabled={creating} className="gap-2">
+            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+            Create key
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6 border-2 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Existing keys</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6 text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : keys.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              No API keys yet.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {keys.map((k) => (
+                <div key={k.id} className="p-4 flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                    <KeyRound className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{k.name}</span>
+                      {k.revoked_at ? (
+                        <Badge variant="destructive">Revoked</Badge>
+                      ) : (
+                        <Badge variant="secondary">Active</Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1 font-mono">
+                      {k.key_prefix}••••••••
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Created {format(new Date(k.created_at), "PP")}
+                      {k.last_used_at && ` · Last used ${format(new Date(k.last_used_at), "PP")}`}
+                    </div>
+                  </div>
+                  {!k.revoked_at && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => revoke(k.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!newKey} onOpenChange={(o) => !o && setNewKey(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Your new API key</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Copy this now. For security, you won't be able to see it again.
+          </p>
+          <div className="bg-muted p-3 rounded font-mono text-sm break-all">{newKey}</div>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                if (newKey) navigator.clipboard.writeText(newKey);
+                toast.success("Copied");
+              }}
+            >
+              <Copy className="mr-2 h-4 w-4" /> Copy
+            </Button>
+            <Button variant="outline" onClick={() => setNewKey(null)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/* ----------------- Activity (audit) ----------------- */
+
+type AuditRow = {
+  id: number;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  user_id: string | null;
+  created_at: string;
+};
+
+function ActivitySection({ orgId }: { orgId: string | null }) {
+  const [rows, setRows] = useState<AuditRow[]>([]);
+  const [users, setUsers] = useState<Map<string, { name: string; email: string }>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!orgId) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabase
+          .from("audit_logs")
+          .select("id, action, resource_type, resource_id, user_id, created_at")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false })
+          .limit(200);
+        const list = (data ?? []) as unknown as AuditRow[];
+        setRows(list);
+        const ids = Array.from(new Set(list.map((r) => r.user_id).filter(Boolean))) as string[];
+        if (ids.length) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, name, email")
+            .in("id", ids);
+          setUsers(
+            new Map(
+              (profiles ?? []).map((p: { id: string; name: string; email: string }) => [
+                p.id,
+                { name: p.name, email: p.email },
+              ])
+            )
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [orgId]);
+
+  return (
+    <div>
+      <SectionHeader
+        eyebrow="Growth"
+        title="Activity"
+        description="Recent actions taken by members and integrations."
+      />
+      <Card className="border-2 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Recent activity</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-10 text-center">
+              No activity yet. As members create, update, or delete content, events will show up here.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Actor</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Resource</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => {
+                  const actor = r.user_id ? users.get(r.user_id) : null;
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {actor ? actor.name || actor.email : r.user_id ? "Unknown" : "System"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="font-mono text-[11px]">
+                          {r.action}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono">
+                        {r.resource_type ?? "—"}
+                        {r.resource_id ? ` · ${r.resource_id.slice(0, 8)}` : ""}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -489,38 +734,124 @@ function AppearanceSection() {
   );
 }
 
-/* ----------------- Link section (bridge to other pages) ----------------- */
+/* ----------------- Notifications ----------------- */
 
-function LinkSection({
-  title,
-  subtitle,
-  icon: Icon,
-  href,
-  cta,
-}: {
-  title: string;
-  subtitle: string;
-  icon: LucideIcon;
-  href: string;
-  cta: string;
-}) {
-  const navigate = useNavigate();
+interface NotificationRow {
+  id: string;
+  type: string;
+  payload: Record<string, unknown> | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+function NotificationsSection({ orgId }: { orgId: string | null }) {
+  const { user } = useAuth();
+  const [items, setItems] = useState<NotificationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    if (!user || !orgId) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) toast.error(error.message);
+    else setItems((data ?? []) as NotificationRow[]);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, orgId]);
+
+  const markRead = async (id: string) => {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) return toast.error(error.message);
+    setItems((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n))
+    );
+  };
+
+  const markAllRead = async () => {
+    const unread = items.filter((i) => !i.read_at).map((i) => i.id);
+    if (unread.length === 0) return;
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", unread);
+    if (error) return toast.error(error.message);
+    load();
+  };
+
+  const unreadCount = items.filter((i) => !i.read_at).length;
+
   return (
     <div>
-      <SectionHeader eyebrow="Settings" title={title} description={subtitle} />
-      <Card className="border-2 shadow-sm">
-        <CardContent className="flex items-center gap-4 py-6">
-          <div className="h-12 w-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-            <Icon className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <div className="font-semibold">{title}</div>
-            <div className="text-sm text-muted-foreground">{subtitle}</div>
-          </div>
-          <Button onClick={() => navigate(href)} className="gap-2">
-            {cta}
-            <ArrowRight className="h-4 w-4" />
+      <SectionHeader
+        eyebrow="Personal"
+        title="Notifications"
+        description="Recent activity across your organization."
+        action={
+          <Button variant="outline" onClick={markAllRead} disabled={unreadCount === 0} className="gap-2">
+            <Check className="h-4 w-4" /> Mark all read
           </Button>
+        }
+      />
+
+      <Card className="border-2 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            Inbox
+            {unreadCount > 0 && <Badge variant="secondary">{unreadCount} new</Badge>}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-8 text-sm text-muted-foreground flex justify-center">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          ) : items.length === 0 ? (
+            <div className="p-10 text-center text-sm text-muted-foreground">
+              You're all caught up.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {items.map((n) => (
+                <div key={n.id} className="p-4 flex items-start gap-3">
+                  <div
+                    className="mt-2 h-2 w-2 rounded-full shrink-0"
+                    style={{ background: n.read_at ? "hsl(var(--muted-foreground) / 0.3)" : "hsl(var(--primary))" }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="secondary">{n.type}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                      </span>
+                    </div>
+                    {n.payload && (
+                      <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-32 overflow-auto">
+                        {JSON.stringify(n.payload, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                  {!n.read_at && (
+                    <Button size="sm" variant="ghost" onClick={() => markRead(n.id)}>
+                      Mark read
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

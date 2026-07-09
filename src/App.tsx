@@ -28,11 +28,8 @@ import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
 import AcceptInvite from "./pages/AcceptInvite";
 import Billing from "./pages/Billing";
-import AuditLog from "./pages/AuditLog";
-import OrganizationSettings from "./pages/OrganizationSettings";
-import Notifications from "./pages/Notifications";
-import ApiKeys from "./pages/ApiKeys";
-import Webhooks from "./pages/Webhooks";
+
+
 import Usage from "./pages/Usage";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -157,32 +154,18 @@ const App = () => (
               path="/settings"
               element={<ProtectedRoute><Settings /></ProtectedRoute>}
             />
-            <Route
-              path="/settings/organization"
-              element={<ProtectedRoute><OrganizationSettings /></ProtectedRoute>}
-            />
+            <Route path="/settings/organization" element={<Navigate to="/settings?s=general" replace />} />
             <Route path="/team" element={<ProtectedRoute requireAdmin><AdminUsers /></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute requireAdmin><Billing /></ProtectedRoute>} />
             <Route path="/usage" element={<ProtectedRoute requireAdmin><Usage /></ProtectedRoute>} />
             <Route path="/settings/users" element={<Navigate to="/team" replace />} />
             <Route path="/settings/billing" element={<Navigate to="/billing" replace />} />
             <Route path="/settings/usage" element={<Navigate to="/usage" replace />} />
-            <Route
-              path="/settings/audit"
-              element={<ProtectedRoute requireAdmin><AuditLog /></ProtectedRoute>}
-            />
-            <Route
-              path="/settings/api-keys"
-              element={<ProtectedRoute requireAdmin><ApiKeys /></ProtectedRoute>}
-            />
-            <Route
-              path="/settings/webhooks"
-              element={<ProtectedRoute requireAdmin><Webhooks /></ProtectedRoute>}
-            />
-            <Route
-              path="/notifications"
-              element={<ProtectedRoute><Notifications /></ProtectedRoute>}
-            />
+            <Route path="/settings/audit" element={<Navigate to="/settings?s=activity" replace />} />
+            <Route path="/settings/api-keys" element={<Navigate to="/settings?s=api-keys" replace />} />
+            <Route path="/settings/webhooks" element={<Navigate to="/settings" replace />} />
+            <Route path="/notifications" element={<Navigate to="/settings?s=notifications" replace />} />
+
 
             <Route
               path="/accounts"
