@@ -114,9 +114,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // organization_id = user_id for personal workspaces
-    const organization_id = targetUserId;
-
     // Ensure the file being deleted belongs to the authenticated user prefix.
     if (!filePath.startsWith(`${targetUserId}/`)) {
       return new Response(
@@ -128,28 +125,6 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
-
-    // Verify workspace membership before deleting.
-    const { data: membership, error: membershipError } = await supabase
-      .from('workspace_members')
-      .select('user_id')
-      .eq('organization_id', organization_id)
-      .eq('user_id', targetUserId)
-      .maybeSingle();
-
-    if (membershipError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to verify workspace membership' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!membership) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - Not a workspace member' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     console.log('Deleting file from bucket:', filePath, 'for user:', targetUserId);
 
