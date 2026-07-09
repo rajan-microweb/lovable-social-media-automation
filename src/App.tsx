@@ -29,10 +29,7 @@ import Onboarding from "./pages/Onboarding";
 import AcceptInvite from "./pages/AcceptInvite";
 import Billing from "./pages/Billing";
 import AuditLog from "./pages/AuditLog";
-import OrganizationSettings from "./pages/OrganizationSettings";
-import Notifications from "./pages/Notifications";
-import ApiKeys from "./pages/ApiKeys";
-import Webhooks from "./pages/Webhooks";
+
 import Usage from "./pages/Usage";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
