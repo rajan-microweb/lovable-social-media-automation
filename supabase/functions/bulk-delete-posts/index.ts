@@ -5,7 +5,7 @@ Deno.serve(async (req) => {
 
   const ctx = await resolveTenantContext(req, { requireWorkspace: true });
   if (!ctx.ok) return ctx.response;
-  const { workspaceId, supabase } = ctx;
+  const { orgId, supabase } = ctx;
 
   try {
     const { post_ids } = await req.json();
@@ -16,10 +16,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Maximum 50 posts can be deleted at once" }, 400);
     }
 
-    // Verify all posts belong to the active workspace.
+    // Verify all posts belong to the active organization.
     const { data: posts, error: fetchError } = await supabase
       .from("posts")
-      .select("id, workspace_id, image, video, pdf")
+      .select("id, organization_id, image, video, pdf")
       .in("id", post_ids);
     if (fetchError) return jsonResponse({ error: "Failed to verify post ownership" }, 500);
 
@@ -27,9 +27,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, deleted: 0, message: "Posts already deleted or not found" });
     }
 
-    const unauthorized = posts.filter((p) => p.workspace_id !== workspaceId);
+    const unauthorized = posts.filter((p) => p.organization_id !== orgId);
     if (unauthorized.length > 0 || posts.length !== post_ids.length) {
-      return jsonResponse({ error: "You can only delete posts from the active workspace" }, 403);
+      return jsonResponse({ error: "You can only delete posts from the active organization" }, 403);
     }
 
     // Cleanup media files.
@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
       .from("posts")
       .delete()
       .in("id", post_ids)
-      .eq("workspace_id", workspaceId);
+      .eq("organization_id", orgId);
     if (delErr) return jsonResponse({ error: "Failed to delete posts" }, 500);
 
     await ctx.writeAudit("posts.bulk_delete", "posts", undefined, { count: post_ids.length });

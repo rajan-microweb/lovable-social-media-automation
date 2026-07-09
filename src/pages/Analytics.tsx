@@ -93,7 +93,7 @@ function groupLabel(date: Date, grouping: TimeGrouping): string {
 }
 
 export function AnalyticsPanel() {
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
 
   const [timeGrouping, setTimeGrouping] = useState<TimeGrouping>("daily");
   const [metric, setMetric] = useState<EngagementMetric>("total");
@@ -124,7 +124,7 @@ export function AnalyticsPanel() {
 
   const { activities, loading: loadingActivity, cacheInfo, refresh } = usePlatformActivity({
     userId: user?.id,
-    workspaceId: workspaceId ?? undefined,
+    orgId: orgId ?? undefined,
     dateFrom: dateFromStart.toISOString(),
     dateTo: dateToEnd.toISOString(),
     platforms: platformsForBackend,
@@ -180,13 +180,13 @@ export function AnalyticsPanel() {
   useEffect(() => {
     let cancelled = false;
     async function loadVolume() {
-      if (!user || !workspaceId) return;
+      if (!user || !orgId) return;
 
       setVolumeLoading(true);
       setVolumeError(null);
 
       try {
-        const allRows = await fetchPublishingVolumeRowsForWorkspace(workspaceId);
+        const allRows = await fetchPublishingVolumeRowsForWorkspace(orgId);
         const rows: PublishingVolumeRow[] =
           contentType === "all"
             ? allRows
@@ -256,7 +256,7 @@ export function AnalyticsPanel() {
     status,
     timeGrouping,
     user,
-    workspaceId,
+    orgId,
   ]);
 
   const refreshWithForce = async () => {

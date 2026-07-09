@@ -347,7 +347,7 @@ export function ContentView({
   showModeTabs?: boolean;
   showLayout?: boolean;
 }) {
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<ContentMode>(initialMode);
@@ -382,7 +382,7 @@ export function ContentView({
   };
 
   useEffect(() => {
-    if (!user || !workspaceId) return;
+    if (!user || !orgId) return;
 
     const shouldFetchPosts = showModeTabs ? true : initialMode !== "stories";
     const shouldFetchStories = showModeTabs ? true : initialMode !== "posts";
@@ -392,9 +392,9 @@ export function ContentView({
       setFetchError(null);
       try {
         const results = await Promise.all([
-          shouldFetchPosts ? fetchPostsForUser(workspaceId) : Promise.resolve([] as Post[]),
-          shouldFetchStories ? fetchStoriesForUser(workspaceId) : Promise.resolve([] as Story[]),
-          fetchPublishJobsForWorkspace(workspaceId),
+          shouldFetchPosts ? fetchPostsForUser(orgId) : Promise.resolve([] as Post[]),
+          shouldFetchStories ? fetchStoriesForUser(orgId) : Promise.resolve([] as Story[]),
+          fetchPublishJobsForWorkspace(orgId),
         ]);
 
         setPosts(results[0]);
@@ -415,7 +415,7 @@ export function ContentView({
     };
 
     run();
-  }, [user, workspaceId, initialMode, showModeTabs]);
+  }, [user, orgId, initialMode, showModeTabs]);
 
   // Avoid confusing bulk-selection carryover when switching modes.
   useEffect(() => {
@@ -517,7 +517,7 @@ export function ContentView({
   };
 
   const handleDeletePost = async (postId: string) => {
-    if (!workspaceId) return;
+    if (!orgId) return;
 
     const targetKey = makeContentKey("post", postId);
     const previousPosts = posts;
@@ -532,7 +532,7 @@ export function ContentView({
     });
 
     try {
-      await deletePostForUser(workspaceId, postId);
+      await deletePostForUser(orgId, postId);
       showToastSuccess("Post deleted");
     } catch (error) {
       setPosts(previousPosts);
@@ -544,7 +544,7 @@ export function ContentView({
   };
 
   const handleDeleteStory = async (storyId: string) => {
-    if (!workspaceId) return;
+    if (!orgId) return;
 
     const targetKey = makeContentKey("story", storyId);
     const previousPosts = posts;
@@ -559,7 +559,7 @@ export function ContentView({
     });
 
     try {
-      await deleteStoryForUser(workspaceId, storyId);
+      await deleteStoryForUser(orgId, storyId);
       showToastSuccess("Story deleted");
     } catch (error) {
       setPosts(previousPosts);
@@ -584,7 +584,7 @@ export function ContentView({
   };
 
   const handleBulkDelete = async () => {
-    if (!workspaceId) return;
+    if (!orgId) return;
     const targetKeys = visibleSelectedKeys;
     if (targetKeys.length === 0) {
       showToastError("No visible selected items to delete");
@@ -615,8 +615,8 @@ export function ContentView({
     setBulkLoading(true);
     try {
       await Promise.all([
-        targetPostIds.length ? bulkDeletePosts(workspaceId, targetPostIds) : Promise.resolve(),
-        targetStoryIds.length ? bulkDeleteStories(workspaceId, targetStoryIds) : Promise.resolve(),
+        targetPostIds.length ? bulkDeletePosts(orgId, targetPostIds) : Promise.resolve(),
+        targetStoryIds.length ? bulkDeleteStories(orgId, targetStoryIds) : Promise.resolve(),
       ]);
       showToastSuccess(`Deleted ${targetKeys.length} item(s)`);
     } catch (error) {
@@ -631,7 +631,7 @@ export function ContentView({
   };
 
   const handleBulkStatusChange = async (status: string) => {
-    if (!workspaceId) return;
+    if (!orgId) return;
     const targetKeys = visibleSelectedKeys;
     if (targetKeys.length === 0) {
       showToastError("No visible selected items to update");
@@ -667,10 +667,10 @@ export function ContentView({
     try {
       await Promise.all([
         targetPostIds.length
-          ? bulkUpdatePosts(workspaceId, targetPostIds, { status: status as SocialStatus })
+          ? bulkUpdatePosts(orgId, targetPostIds, { status: status as SocialStatus })
           : Promise.resolve(),
         targetStoryIds.length
-          ? bulkUpdateStories(workspaceId, targetStoryIds, { status: status as SocialStatus })
+          ? bulkUpdateStories(orgId, targetStoryIds, { status: status as SocialStatus })
           : Promise.resolve(),
       ]);
       showToastSuccess(`Updated ${targetKeys.length} item(s)`);
@@ -686,7 +686,7 @@ export function ContentView({
   };
 
   const handleBulkSchedule = async (date: Date) => {
-    if (!workspaceId) return;
+    if (!orgId) return;
     const targetKeys = visibleSelectedKeys;
     if (targetKeys.length === 0) {
       showToastError("No visible selected items to schedule");
@@ -732,10 +732,10 @@ export function ContentView({
     try {
       await Promise.all([
         targetPostIds.length
-          ? bulkUpdatePosts(workspaceId, targetPostIds, { status: nextStatus, scheduled_at: scheduledAt })
+          ? bulkUpdatePosts(orgId, targetPostIds, { status: nextStatus, scheduled_at: scheduledAt })
           : Promise.resolve(),
         targetStoryIds.length
-          ? bulkUpdateStories(workspaceId, targetStoryIds, { status: nextStatus, scheduled_at: scheduledAt })
+          ? bulkUpdateStories(orgId, targetStoryIds, { status: nextStatus, scheduled_at: scheduledAt })
           : Promise.resolve(),
       ]);
       showToastSuccess(
@@ -905,8 +905,8 @@ export function ContentView({
                     if (!user) return;
                     setLoading(true);
                     setFetchError(null);
-                    if (!workspaceId) return;
-                    Promise.all([fetchPostsForUser(workspaceId), fetchStoriesForUser(workspaceId)])
+                    if (!orgId) return;
+                    Promise.all([fetchPostsForUser(orgId), fetchStoriesForUser(orgId)])
                       .then(([p, s]) => {
                         setPosts(p);
                         setStories(s);

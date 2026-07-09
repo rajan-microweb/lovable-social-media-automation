@@ -7,7 +7,7 @@ type PostRow = Database["public"]["Tables"]["posts"]["Row"];
 type StoryRow = Database["public"]["Tables"]["stories"]["Row"];
 
 export async function fetchScheduledCalendarEventsForUserInRange(
-  workspaceId: string,
+  orgId: string,
   startIso: string,
   endIso: string
 ): Promise<ContentItem[]> {
@@ -49,7 +49,7 @@ export async function fetchScheduledCalendarEventsForUserInRange(
     const { data, error } = await supabase
       .from("posts")
       .select(select)
-      .eq("workspace_id", workspaceId)
+      .eq("organization_id", orgId)
       .not("scheduled_at", "is", null)
       .gte("scheduled_at", startIso)
       .lte("scheduled_at", endIso);
@@ -61,7 +61,7 @@ export async function fetchScheduledCalendarEventsForUserInRange(
     const { data, error } = await supabase
       .from("stories")
       .select(select)
-      .eq("workspace_id", workspaceId)
+      .eq("organization_id", orgId)
       .not("scheduled_at", "is", null)
       .gte("scheduled_at", startIso)
       .lte("scheduled_at", endIso);
@@ -97,7 +97,7 @@ export async function fetchScheduledCalendarEventsForUserInRange(
       ? supabase
           .from("publish_jobs")
           .select("content_id, state, retry_count, last_error, run_at")
-          .eq("workspace_id", workspaceId)
+          .eq("organization_id", orgId)
           .eq("content_type", "post")
           .in("content_id", postIds)
       : Promise.resolve({ data: [], error: null }),
@@ -105,7 +105,7 @@ export async function fetchScheduledCalendarEventsForUserInRange(
       ? supabase
           .from("publish_jobs")
           .select("content_id, state, retry_count, last_error, run_at")
-          .eq("workspace_id", workspaceId)
+          .eq("organization_id", orgId)
           .eq("content_type", "story")
           .in("content_id", storyIds)
       : Promise.resolve({ data: [], error: null }),
@@ -189,7 +189,7 @@ export async function fetchScheduledCalendarEventsForUserInRange(
 }
 
 export async function deleteCalendarEventForUser(
-  workspaceId: string,
+  orgId: string,
   id: string,
   kind: "post" | "story"
 ): Promise<void> {
@@ -197,13 +197,13 @@ export async function deleteCalendarEventForUser(
     .from(kind === "post" ? "posts" : "stories")
     .delete()
     .eq("id", id)
-    .eq("workspace_id", workspaceId);
+    .eq("organization_id", orgId);
 
   if (error) throw error;
 }
 
 export async function rescheduleCalendarEventForUser(
-  workspaceId: string,
+  orgId: string,
   id: string,
   kind: "post" | "story",
   scheduledAtIso: string
@@ -212,7 +212,7 @@ export async function rescheduleCalendarEventForUser(
     .from(kind === "post" ? "posts" : "stories")
     .update({ scheduled_at: scheduledAtIso })
     .eq("id", id)
-    .eq("workspace_id", workspaceId);
+    .eq("organization_id", orgId);
 
   if (error) throw error;
 }

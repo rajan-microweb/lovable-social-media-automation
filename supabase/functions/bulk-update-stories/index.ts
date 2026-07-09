@@ -5,7 +5,7 @@ Deno.serve(async (req) => {
 
   const ctx = await resolveTenantContext(req, { requireWorkspace: true });
   if (!ctx.ok) return ctx.response;
-  const { workspaceId, supabase } = ctx;
+  const { orgId, supabase } = ctx;
 
   try {
     const { story_ids, updates } = await req.json();
@@ -18,11 +18,11 @@ Deno.serve(async (req) => {
 
     const { data: stories } = await supabase
       .from("stories")
-      .select("id, workspace_id")
+      .select("id, organization_id")
       .in("id", story_ids);
     const rows = stories ?? [];
-    if (rows.length !== story_ids.length || rows.some((s) => s.workspace_id !== workspaceId)) {
-      return jsonResponse({ error: "You can only update stories in the active workspace" }, 403);
+    if (rows.length !== story_ids.length || rows.some((s) => s.organization_id !== orgId)) {
+      return jsonResponse({ error: "You can only update stories in the active organization" }, 403);
     }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
       .from("stories")
       .update(updateData)
       .in("id", story_ids)
-      .eq("workspace_id", workspaceId);
+      .eq("organization_id", orgId);
     if (error) return jsonResponse({ error: "Failed to update stories" }, 500);
 
     await ctx.writeAudit("stories.bulk_update", "stories", undefined, { count: story_ids.length, updates });

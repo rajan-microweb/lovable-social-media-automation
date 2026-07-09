@@ -62,20 +62,7 @@ export default function Onboarding() {
       // 3. Seed built-in role permissions
       await supabase.rpc("seed_org_role_permissions", { _org: org.id });
 
-      // 4. Create default workspace
-      const { data: ws, error: wsErr } = await supabase
-        .from("workspaces")
-        .insert({
-          organization_id: org.id,
-          name: "Default Workspace",
-          slug: "default",
-          is_default: true,
-        } as any)
-        .select("id")
-        .single();
-      if (wsErr) throw wsErr;
-
-      // 5. Assign a Free subscription
+      // 4. Assign a Free subscription
       const { data: freePlan } = await supabase
         .from("plans")
         .select("id")
@@ -89,11 +76,11 @@ export default function Onboarding() {
         });
       }
 
-      // 6. Set active context
+      // 5. Set active context
       await supabase.from("profiles").update({
         active_organization_id: org.id,
-        active_workspace_id: ws.id,
       }).eq("id", user.id);
+
 
 
       toast.success("Organization created!");
@@ -124,7 +111,7 @@ export default function Onboarding() {
           </div>
           <CardTitle className="text-2xl">Create your organization</CardTitle>
           <CardDescription>
-            Set up a workspace for your team. You can invite members and configure more later.
+            Get started by creating your organization. You can invite members and configure more later.
           </CardDescription>
         </CardHeader>
         <CardContent>

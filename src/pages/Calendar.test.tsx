@@ -11,7 +11,7 @@ const authState = {
   user: { id: "u1" } as { id: string },
   loading: false,
   isAdmin: false,
-  workspaceId: "u1",
+  orgId: "u1",
 };
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -116,7 +116,7 @@ describe("Calendar", () => {
     );
 
     expect(fetchScheduledCalendarEventsForUserInRangeMock).toHaveBeenCalledWith(
-      authState.workspaceId,
+      authState.orgId,
       startIso,
       endIso
     );

@@ -27,7 +27,7 @@ export interface PlatformActivityCacheInfo {
 
 export interface UsePlatformActivityOptions {
   userId?: string;
-  workspaceId?: string;
+  orgId?: string;
   dateFrom?: string; // ISO
   dateTo?: string; // ISO
   platforms?: string[];
@@ -51,7 +51,7 @@ export function usePlatformActivity(options: UsePlatformActivityOptions) {
     try {
       const { data, error: fnError } = await supabase.functions.invoke("get-platform-activity", {
         body: {
-          workspace_id: options.workspaceId,
+          organization_id: options.orgId,
           date_from: options.dateFrom,
           date_to: options.dateTo,
           platforms: options.platforms,
@@ -90,7 +90,7 @@ export function usePlatformActivity(options: UsePlatformActivityOptions) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     options.userId,
-    options.workspaceId,
+    options.orgId,
     options.dateFrom,
     options.dateTo,
     JSON.stringify(options.platforms ?? []),

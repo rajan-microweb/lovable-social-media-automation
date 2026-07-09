@@ -3,12 +3,12 @@
 // Usage:
 //   const ctx = await resolveTenantContext(req);
 //   if (!ctx.ok) return ctx.response;
-//   const { user, orgId, workspaceId, supabase, requirePermission } = ctx;
+//   const { user, orgId, supabase, requirePermission } = ctx;
 //
 // - `user` is verified against the caller's JWT.
-// - `orgId` / `workspaceId` come from X-Org-Id / X-Workspace-Id headers and
-//   are validated against membership. Never trust client-supplied values
-//   without this validation.
+// - `orgId` comes from X-Org-Id header (or profiles.active_organization_id
+//   fallback) and is validated against membership. Never trust client-supplied
+//   values without this validation.
 // - `supabase` is a service-role client bound to the request (use sparingly;
 //   RLS is bypassed).
 // - `requirePermission(key)` throws a 403 Response if the caller lacks the
@@ -19,7 +19,7 @@ import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-org-id, x-workspace-id",
+    "authorization, x-client-info, apikey, content-type, x-org-id",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
 };
 
@@ -34,7 +34,6 @@ export interface TenantContextOk {
   ok: true;
   user: { id: string; email: string | null };
   orgId: string;
-  workspaceId: string | null;
   supabase: SupabaseClient;
   requirePermission: (key: string) => Promise<void>;
   writeAudit: (action: string, resourceType?: string, resourceId?: string, meta?: unknown) => Promise<void>;
@@ -54,10 +53,7 @@ class HttpError extends Error {
   }
 }
 
-export async function resolveTenantContext(
-  req: Request,
-  opts: { requireWorkspace?: boolean } = {},
-): Promise<TenantContext> {
+export async function resolveTenantContext(req: Request): Promise<TenantContext> {
   try {
     const url = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -66,7 +62,6 @@ export async function resolveTenantContext(
       throw new HttpError(500, { error: "Server not configured" });
     }
 
-    // Validate JWT via the anon client bound to the caller's token.
     const authHeader = req.headers.get("Authorization") ?? "";
     const jwt = authHeader.replace(/^Bearer\s+/i, "");
     if (!jwt) throw new HttpError(401, { error: "Missing bearer token" });
@@ -81,31 +76,22 @@ export async function resolveTenantContext(
     }
     const user = { id: userRes.user.id, email: userRes.user.email ?? null };
 
-    // Service-role client for privileged reads/writes.
     const svc = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-    // Read tenant headers.
     const orgIdHeader = req.headers.get("x-org-id");
-    const workspaceIdHeader = req.headers.get("x-workspace-id");
-
-    // Resolve org: prefer header, else fall back to profiles.
     let orgId = orgIdHeader;
-    let workspaceId = workspaceIdHeader;
 
-    if (!orgId || !workspaceId) {
+    if (!orgId) {
       const { data: ctx } = await svc
         .from("profiles")
-        .select("active_organization_id, active_workspace_id")
+        .select("active_organization_id")
         .eq("id", user.id)
         .maybeSingle();
-      orgId = orgId ?? ctx?.active_organization_id ?? null;
-      workspaceId = workspaceId ?? ctx?.active_workspace_id ?? null;
+      orgId = ctx?.active_organization_id ?? null;
     }
-
 
     if (!orgId) throw new HttpError(400, { error: "No active organization" });
 
-    // Validate membership.
     const { data: member } = await svc
       .from("organization_members")
       .select("role, status")
@@ -114,21 +100,6 @@ export async function resolveTenantContext(
       .eq("status", "active")
       .maybeSingle();
     if (!member) throw new HttpError(403, { error: "Not a member of this organization" });
-
-    // Validate workspace belongs to org.
-    if (workspaceId) {
-      const { data: ws } = await svc
-        .from("workspaces")
-        .select("id, organization_id")
-        .eq("id", workspaceId)
-        .maybeSingle();
-      if (!ws || ws.organization_id !== orgId) {
-        workspaceId = null;
-      }
-    }
-    if (opts.requireWorkspace && !workspaceId) {
-      throw new HttpError(400, { error: "No active workspace" });
-    }
 
     const requirePermission = async (key: string) => {
       const { data, error } = await svc.rpc("has_org_permission", {
@@ -150,7 +121,6 @@ export async function resolveTenantContext(
       const ua = req.headers.get("user-agent") ?? null;
       await svc.from("audit_logs").insert({
         organization_id: orgId,
-        workspace_id: workspaceId,
         user_id: user.id,
         action,
         resource_type: resource_type ?? null,
@@ -164,7 +134,6 @@ export async function resolveTenantContext(
     const logUsage = async (metric: string, quantity = 1, meta?: unknown) => {
       await svc.from("usage_logs").insert({
         organization_id: orgId,
-        workspace_id: workspaceId,
         user_id: user.id,
         metric,
         quantity,
@@ -176,7 +145,6 @@ export async function resolveTenantContext(
       ok: true,
       user,
       orgId,
-      workspaceId,
       supabase: svc,
       requirePermission,
       writeAudit,

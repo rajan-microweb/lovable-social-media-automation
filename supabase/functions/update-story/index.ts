@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { story_id, workspace_id: bodyWs, user_id: _u, ...rawUpdate } = body ?? {};
+    const { story_id, organization_id: bodyWs, user_id: _u, ...rawUpdate } = body ?? {};
 
     if (!story_id || !z.string().uuid().safeParse(story_id).success) {
       return jsonResponse({ error: "story_id is required" }, 400);
@@ -41,39 +41,39 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Invalid update data", details: parsed.error.errors }, 400);
     }
 
-    let workspaceId: string | null = null;
+    let orgId: string | null = null;
     let supabase;
     let writeAudit: undefined | ((a: string, r?: string, id?: string, m?: unknown) => Promise<void>);
 
     if (isApiKey) {
       if (!bodyWs || !z.string().uuid().safeParse(bodyWs).success) {
-        return jsonResponse({ error: "workspace_id is required for API key auth" }, 400);
+        return jsonResponse({ error: "organization_id is required for API key auth" }, 400);
       }
-      workspaceId = bodyWs;
+      orgId = bodyWs;
       supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
     } else {
       const ctx = await resolveTenantContext(req, { requireWorkspace: true });
       if (!ctx.ok) return ctx.response;
-      workspaceId = ctx.workspaceId!;
+      orgId = ctx.orgId!;
       supabase = ctx.supabase;
       writeAudit = ctx.writeAudit;
     }
 
     const { data: story, error: fetchErr } = await supabase
       .from("stories")
-      .select("workspace_id")
+      .select("organization_id")
       .eq("id", story_id)
       .single();
     if (fetchErr || !story) return jsonResponse({ error: "Story not found" }, 404);
-    if (story.workspace_id !== workspaceId) {
-      return jsonResponse({ error: "Unauthorized - wrong workspace" }, 403);
+    if (story.organization_id !== orgId) {
+      return jsonResponse({ error: "Unauthorized - wrong organization" }, 403);
     }
 
     const { data, error } = await supabase
       .from("stories")
       .update(parsed.data)
       .eq("id", story_id)
-      .eq("workspace_id", workspaceId)
+      .eq("organization_id", orgId)
       .select()
       .single();
     if (error) return jsonResponse({ error: error.message }, 500);

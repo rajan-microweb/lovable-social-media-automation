@@ -5,7 +5,7 @@ export type TemplateSort = "updated_desc" | "name_asc";
 
 export type ContentTemplate = {
   id: string;
-  workspace_id: string | null;
+  organization_id: string | null;
   kind: TemplateKind;
   type_of_post: string | null;
   type_of_story: string | null;
@@ -17,7 +17,7 @@ export type ContentTemplate = {
 };
 
 type ListTemplatesParams = {
-  workspaceId: string;
+  orgId: string;
   kind?: TemplateKind;
   includeGlobal?: boolean;
   search?: string;
@@ -28,14 +28,14 @@ type ListTemplatesParams = {
 };
 
 type SaveTemplatePayload = {
-  workspaceId: string;
+  orgId: string;
   kind: TemplateKind;
   template_name: string;
   type_of_post?: string | null;
   type_of_story?: string | null;
   overrides: Record<string, any>;
   category?: string | null;
-  visibility?: "workspace" | "team" | "public";
+  visibility?: "organization" | "team" | "public";
   owner_type?: "user" | "team";
   team_id?: string | null;
 };
@@ -44,7 +44,7 @@ function withFutureMeta(payload: SaveTemplatePayload): Record<string, any> {
   const baseOverrides = payload.overrides || {};
   const meta = {
     category: payload.category || null,
-    visibility: payload.visibility || "workspace",
+    visibility: payload.visibility || "organization",
     owner_type: payload.owner_type || "user",
     team_id: payload.team_id || null,
   };
@@ -59,7 +59,7 @@ function withFutureMeta(payload: SaveTemplatePayload): Record<string, any> {
 }
 
 export async function listTemplates({
-  workspaceId,
+  orgId,
   kind,
   includeGlobal = true,
   search = "",
@@ -77,9 +77,9 @@ export async function listTemplates({
   }
 
   if (includeGlobal) {
-    query = query.or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`);
+    query = query.or(`organization_id.is.null,organization_id.eq.${orgId}`);
   } else {
-    query = query.eq("workspace_id", workspaceId);
+    query = query.eq("organization_id", orgId);
   }
 
   const trimmedSearch = search.trim();
@@ -113,7 +113,7 @@ export async function createTemplate(payload: SaveTemplatePayload): Promise<Cont
   const { data, error } = await (supabase as any)
     .from("content_templates" as any)
     .insert({
-      workspace_id: payload.workspaceId,
+      organization_id: payload.orgId,
       kind: payload.kind,
       template_name: payload.template_name,
       type_of_post: payload.kind === "post" ? payload.type_of_post || null : null,
@@ -142,7 +142,7 @@ export async function updateTemplate(
       overrides: withFutureMeta(payload),
     })
     .eq("id", templateId)
-    .eq("workspace_id", payload.workspaceId)
+    .eq("organization_id", payload.orgId)
     .select("*")
     .single();
 
@@ -150,24 +150,24 @@ export async function updateTemplate(
   return data as ContentTemplate;
 }
 
-export async function deleteTemplate(templateId: string, workspaceId: string): Promise<void> {
+export async function deleteTemplate(templateId: string, orgId: string): Promise<void> {
   const { error } = await (supabase as any)
     .from("content_templates" as any)
     .delete()
     .eq("id", templateId)
-    .eq("workspace_id", workspaceId);
+    .eq("organization_id", orgId);
 
   if (error) throw error;
 }
 
 export async function duplicateTemplate(
   template: ContentTemplate,
-  workspaceId: string
+  orgId: string
 ): Promise<ContentTemplate> {
   const { data, error } = await (supabase as any)
     .from("content_templates" as any)
     .insert({
-      workspace_id: workspaceId,
+      organization_id: orgId,
       kind: template.kind,
       type_of_post: template.type_of_post,
       type_of_story: template.type_of_story,

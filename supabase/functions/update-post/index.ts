@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { post_id, user_id, workspace_id: _ignored, ...rawUpdateData } = body;
+    const { post_id, user_id, organization_id: _ignored, ...rawUpdateData } = body;
 
     if (!user_id) {
       return new Response(
@@ -84,9 +84,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // workspace_id = user_id for personal workspaces
-    const workspace_id = user_id;
 
     if (!post_id) {
       return new Response(
@@ -112,32 +109,10 @@ Deno.serve(async (req) => {
 
     const updateData = validationResult.data;
 
-    // Verify workspace membership
-    const { data: membership, error: membershipError } = await supabase
-      .from('workspace_members')
-      .select('user_id')
-      .eq('workspace_id', workspace_id)
-      .eq('user_id', user_id)
-      .maybeSingle();
-
-    if (membershipError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to verify workspace membership' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!membership) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - Not a workspace member' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Verify post belongs to workspace
+    // Load the post and verify caller is an active member of its organization.
     const { data: post, error: fetchError } = await supabase
       .from('posts')
-      .select('workspace_id')
+      .select('organization_id')
       .eq('id', post_id)
       .single();
 
@@ -148,9 +123,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (post.workspace_id !== workspace_id) {
+    const { data: membership, error: membershipError } = await supabase
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', post.organization_id)
+      .eq('user_id', user_id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (membershipError) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized - Wrong workspace' }),
+        JSON.stringify({ error: 'Failed to verify organization membership' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Not a member of this organization' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -161,7 +151,7 @@ Deno.serve(async (req) => {
       .from('posts')
       .update(updateData)
       .eq('id', post_id)
-      .eq('workspace_id', workspace_id)
+      .eq('organization_id', organization_id)
       .select()
       .single();
 

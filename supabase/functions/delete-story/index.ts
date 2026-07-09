@@ -18,42 +18,42 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "story_id is required" }, 400);
     }
 
-    let workspaceId: string | null = null;
+    let orgId: string | null = null;
     let supabase;
     let writeAudit: undefined | ((a: string, r?: string, id?: string, m?: unknown) => Promise<void>);
 
     if (isApiKey) {
-      // n8n path — require workspace_id in body.
-      const wid = body?.workspace_id;
+      // n8n path — require organization_id in body.
+      const wid = body?.organization_id;
       if (!wid || !z.string().uuid().safeParse(wid).success) {
-        return jsonResponse({ error: "workspace_id is required for API key auth" }, 400);
+        return jsonResponse({ error: "organization_id is required for API key auth" }, 400);
       }
-      workspaceId = wid;
+      orgId = wid;
       supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
     } else {
       const ctx = await resolveTenantContext(req, { requireWorkspace: true });
       if (!ctx.ok) return ctx.response;
-      workspaceId = ctx.workspaceId!;
+      orgId = ctx.orgId!;
       supabase = ctx.supabase;
       writeAudit = ctx.writeAudit;
     }
 
     const { data: story, error: fetchErr } = await supabase
       .from("stories")
-      .select("workspace_id")
+      .select("organization_id")
       .eq("id", story_id)
       .maybeSingle();
     if (fetchErr) return jsonResponse({ error: "Error fetching story" }, 500);
     if (!story) return jsonResponse({ success: true, message: "Story already deleted" });
-    if (story.workspace_id !== workspaceId) {
-      return jsonResponse({ error: "Unauthorized - wrong workspace" }, 403);
+    if (story.organization_id !== orgId) {
+      return jsonResponse({ error: "Unauthorized - wrong organization" }, 403);
     }
 
     const { error } = await supabase
       .from("stories")
       .delete()
       .eq("id", story_id)
-      .eq("workspace_id", workspaceId);
+      .eq("organization_id", orgId);
     if (error) return jsonResponse({ error: error.message }, 500);
 
     if (writeAudit) await writeAudit("story.delete", "story", story_id);

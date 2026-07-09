@@ -5,7 +5,7 @@ Deno.serve(async (req) => {
 
   const ctx = await resolveTenantContext(req, { requireWorkspace: true });
   if (!ctx.ok) return ctx.response;
-  const { workspaceId, supabase } = ctx;
+  const { orgId, supabase } = ctx;
 
   try {
     const { post_ids, updates } = await req.json();
@@ -18,11 +18,11 @@ Deno.serve(async (req) => {
 
     const { data: posts } = await supabase
       .from("posts")
-      .select("id, workspace_id")
+      .select("id, organization_id")
       .in("id", post_ids);
     const rows = posts ?? [];
-    if (rows.length !== post_ids.length || rows.some((p) => p.workspace_id !== workspaceId)) {
-      return jsonResponse({ error: "You can only update posts in the active workspace" }, 403);
+    if (rows.length !== post_ids.length || rows.some((p) => p.organization_id !== orgId)) {
+      return jsonResponse({ error: "You can only update posts in the active organization" }, 403);
     }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
       .from("posts")
       .update(updateData)
       .in("id", post_ids)
-      .eq("workspace_id", workspaceId);
+      .eq("organization_id", orgId);
     if (error) return jsonResponse({ error: "Failed to update posts" }, 500);
 
     await ctx.writeAudit("posts.bulk_update", "posts", undefined, { count: post_ids.length, updates });

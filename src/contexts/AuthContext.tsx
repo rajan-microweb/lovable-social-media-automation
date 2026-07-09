@@ -11,10 +11,9 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   isAdmin: boolean;
   orgId: string | null;
-  workspaceId: string | null;
   needsOnboarding: boolean;
   refreshTenant: () => Promise<void>;
-  setActiveTenant: (orgId: string, workspaceId: string) => Promise<void>;
+  setActiveTenant: (orgId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,26 +25,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [tenantLoading, setTenantLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const navigate = useNavigate();
 
   const loadTenant = useCallback(async (userId: string) => {
     setTenantLoading(true);
     try {
-      // 1. Read active context from profiles.
       const { data: ctx } = await supabase
         .from("profiles")
-        .select("active_organization_id, active_workspace_id")
+        .select("active_organization_id")
         .eq("id", userId)
         .maybeSingle();
 
-
-
       let activeOrg = ctx?.active_organization_id ?? null;
-      let activeWs = ctx?.active_workspace_id ?? null;
 
-      // 2. Fall back to first membership if no active context or context stale.
       if (!activeOrg) {
         const { data: mem } = await supabase
           .from("organization_members")
@@ -58,25 +51,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         activeOrg = mem?.organization_id ?? null;
       }
 
-      if (activeOrg && !activeWs) {
-        const { data: ws } = await supabase
-          .from("workspaces")
-          .select("id")
-          .eq("organization_id", activeOrg)
-          .order("is_default", { ascending: false })
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        activeWs = ws?.id ?? null;
-      }
-
       setOrgId(activeOrg);
-      setWorkspaceId(activeWs);
       setNeedsOnboarding(!activeOrg);
-      setActiveTenantHeaders(activeOrg, activeWs);
+      setActiveTenantHeaders(activeOrg);
 
-
-      // 3. Admin flag = ADMIN or OWNER in the active org.
       if (activeOrg) {
         const { data: role } = await supabase
           .from("organization_members")
@@ -86,21 +64,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .maybeSingle();
         setIsAdmin(role?.role === "ADMIN" || role?.role === "OWNER");
 
-        // Persist context if it wasn't set yet.
-        if (!ctx?.active_organization_id || ctx?.active_workspace_id !== activeWs) {
+        if (!ctx?.active_organization_id) {
           await supabase.from("profiles").update({
             active_organization_id: activeOrg,
-            active_workspace_id: activeWs,
           }).eq("id", userId);
         }
-
       } else {
         setIsAdmin(false);
       }
     } catch (e) {
       console.error("loadTenant failed:", e);
       setOrgId(null);
-      setWorkspaceId(null);
       setIsAdmin(false);
       setNeedsOnboarding(true);
     } finally {
@@ -117,7 +91,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setTimeout(() => { loadTenant(s.user.id); }, 0);
       } else {
         setOrgId(null);
-        setWorkspaceId(null);
         setIsAdmin(false);
         setNeedsOnboarding(false);
       }
@@ -136,10 +109,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async () => {
     await supabase.auth.signOut();
     setOrgId(null);
-    setWorkspaceId(null);
     setIsAdmin(false);
     setNeedsOnboarding(false);
-    setActiveTenantHeaders(null, null);
+    setActiveTenantHeaders(null);
     navigate("/auth");
   };
 
@@ -147,13 +119,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (user) await loadTenant(user.id);
   }, [user, loadTenant]);
 
-  const setActiveTenant = useCallback(async (nextOrg: string, nextWs: string) => {
+  const setActiveTenant = useCallback(async (nextOrg: string) => {
     if (!user) return;
     await supabase.from("profiles").update({
       active_organization_id: nextOrg,
-      active_workspace_id: nextWs,
     }).eq("id", user.id);
-
     await loadTenant(user.id);
   }, [user, loadTenant]);
 
@@ -166,7 +136,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         signOut,
         isAdmin,
         orgId,
-        workspaceId,
         needsOnboarding,
         refreshTenant,
         setActiveTenant,

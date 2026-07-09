@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
 
     const { data: dueJobs, error: dueJobsError } = await supabase
       .from("publish_jobs")
-      .select("id, workspace_id, content_type, content_id, state, run_at, retry_count, last_error")
+      .select("id, organization_id, content_type, content_id, state, run_at, retry_count, last_error")
       .in("state", ["queued", "retrying"])
       .lte("run_at", nowIso)
       .order("run_at", { ascending: true })
@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
           updated_at: claimedIso,
         })
         .eq("id", job.id)
-        .eq("workspace_id", job.workspace_id)
+        .eq("organization_id", job.organization_id)
         .in("state", ["queued", "retrying"])
         .lte("run_at", nowIso)
         .select("id")
@@ -138,8 +138,8 @@ Deno.serve(async (req) => {
             updated_at: claimedIso,
           }).eq("id", job.id),
           job.content_type === "post"
-            ? supabase.from("posts").update({ status: "published", updated_at: claimedIso }).eq("id", job.content_id).eq("workspace_id", job.workspace_id)
-            : supabase.from("stories").update({ status: "published", updated_at: claimedIso }).eq("id", job.content_id).eq("workspace_id", job.workspace_id),
+            ? supabase.from("posts").update({ status: "published", updated_at: claimedIso }).eq("id", job.content_id).eq("organization_id", job.organization_id)
+            : supabase.from("stories").update({ status: "published", updated_at: claimedIso }).eq("id", job.content_id).eq("organization_id", job.organization_id),
         ]);
 
         results.succeeded += 1;
@@ -180,12 +180,12 @@ Deno.serve(async (req) => {
                   .from("posts")
                   .update({ status: "failed", updated_at: claimedIso })
                   .eq("id", job.content_id)
-                  .eq("workspace_id", job.workspace_id)
+                  .eq("organization_id", job.organization_id)
               : supabase
                   .from("stories")
                   .update({ status: "failed", updated_at: claimedIso })
                   .eq("id", job.content_id)
-                  .eq("workspace_id", job.workspace_id),
+                  .eq("organization_id", job.organization_id),
           ]);
 
           results.failed += 1;

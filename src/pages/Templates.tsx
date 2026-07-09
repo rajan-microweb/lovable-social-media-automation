@@ -120,7 +120,7 @@ function normalizeOverrides(raw: string) {
 
 export default function Templates() {
   const navigate = useNavigate();
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
 
   const [kindTab, setKindTab] = useState<TemplateKind>("post");
   const [search, setSearch] = useState("");
@@ -258,7 +258,7 @@ export default function Templates() {
   }, [platforms, selectedAccountIds, textContent, title, description, articleTitle, articleDescription, articleUrl, articleThumbnailUrl, imageUrl, videoUrl, pdfUrl, carouselCsv]);
 
   const { data, isLoading, isFetching, refetch } = useTemplates({
-    workspaceId: workspaceId || undefined,
+    orgId: orgId || undefined,
     kind: kindTab,
     includeGlobal: false,
     search: debouncedSearch,
@@ -268,7 +268,7 @@ export default function Templates() {
     pageSize,
   });
 
-  const { saveTemplate, removeTemplate, cloneTemplate } = useTemplateMutations(workspaceId || undefined);
+  const { saveTemplate, removeTemplate, cloneTemplate } = useTemplateMutations(orgId || undefined);
 
   useEffect(() => {
     setPage(0);
@@ -287,7 +287,7 @@ export default function Templates() {
   const stats = useMemo(
     () => ({
       total: totalCount,
-      workspaceOnly: allTemplates.filter((t) => t.workspace_id).length,
+      organizationOnly: allTemplates.filter((t) => t.organization_id).length,
     }),
     [allTemplates, totalCount]
   );
@@ -395,7 +395,7 @@ export default function Templates() {
       return;
     }
 
-    if (!workspaceId) {
+    if (!orgId) {
       toast.error("Workspace not ready.");
       return;
     }
@@ -403,7 +403,7 @@ export default function Templates() {
     try {
       await saveTemplate.mutateAsync({
         id: editingTemplate?.id,
-        workspaceId,
+        orgId,
         kind: parsed.data.kind,
         template_name: parsed.data.template_name,
         type_of_post: parsed.data.type_of_post || null,
@@ -550,7 +550,7 @@ export default function Templates() {
           <Card>
             <CardContent className="pt-6">
               <p className="text-xs text-muted-foreground">Active Templates</p>
-              <p className="text-2xl font-semibold">{stats.workspaceOnly}</p>
+              <p className="text-2xl font-semibold">{stats.organizationOnly}</p>
             </CardContent>
           </Card>
         </div>
@@ -1197,7 +1197,7 @@ export default function Templates() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete template?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The template will be removed from your workspace.
+              This action cannot be undone. The template will be removed from your organization.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -19,7 +19,7 @@ type PipelineStage = "queued" | "published" | "failed";
 let stage: PipelineStage = "queued";
 
 const userId = "u1";
-const workspaceId = "w1";
+const orgId = "w1";
 
 const scheduledAt = new Date().toISOString();
 
@@ -27,7 +27,7 @@ const authState = {
   user: { id: userId } as any,
   loading: false,
   isAdmin: false,
-  workspaceId,
+  orgId,
 };
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -220,7 +220,7 @@ describe("Publer core flow (smoke/component)", () => {
       return [
         {
           id: "job-1",
-          workspace_id: workspaceId,
+          organization_id: orgId,
           content_type: "post",
           content_id: "post-1",
           state,

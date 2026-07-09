@@ -10,7 +10,7 @@ vi.mock("@/contexts/AuthContext", () => ({
     user: { id: "u1" } as any,
     loading: false,
     isAdmin: false,
-    workspaceId: "w1",
+    orgId: "w1",
   }),
 }));
 

@@ -108,7 +108,7 @@ const getWeekStartsOn = (): WeekStartsOn => {
 
 export default function Calendar() {
   const navigate = useNavigate();
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewType>("month");
   const [events, setEvents] = useState<ContentItem[]>([]);
@@ -140,9 +140,9 @@ export default function Calendar() {
   }, [currentDate, view, weekStartsOn]);
 
   useEffect(() => {
-    if (!user || !workspaceId) return;
+    if (!user || !orgId) return;
     void fetchEvents();
-  }, [user, workspaceId, visibleRange.start.getTime(), visibleRange.end.getTime()]);
+  }, [user, orgId, visibleRange.start.getTime(), visibleRange.end.getTime()]);
 
   const fetchEvents = async () => {
     const requestId = ++fetchRequestIdRef.current;
@@ -172,7 +172,7 @@ export default function Calendar() {
       ).toISOString();
 
       const fetchedEvents = await fetchScheduledCalendarEventsForUserInRange(
-        workspaceId,
+        orgId,
         startIso,
         endIso
       );
@@ -371,9 +371,9 @@ export default function Calendar() {
     try {
       // For derived recurrence occurrences, reschedule the stored content so edit/delete in the modal
       // stays consistent with what the user clicked.
-      if (!workspaceId) return;
+      if (!orgId) return;
       if (!event.isAnchorOccurrence && event.scheduled_at !== event.baseScheduledAt) {
-        await rescheduleCalendarEventForUser(workspaceId, event.id, event.kind, event.scheduled_at!);
+        await rescheduleCalendarEventForUser(orgId, event.id, event.kind, event.scheduled_at!);
         await fetchEvents();
       }
 
@@ -386,9 +386,9 @@ export default function Calendar() {
   };
 
   const handleDeleteEvent = async (id: string, kind: ContentKind) => {
-    if (!workspaceId) return;
+    if (!orgId) return;
     try {
-      await deleteCalendarEventForUser(workspaceId, id, kind);
+      await deleteCalendarEventForUser(orgId, id, kind);
       toast({ title: "Deleted", description: `${kind === "post" ? "Post" : "Story"} deleted successfully` });
       fetchEvents();
     } catch {
@@ -416,14 +416,14 @@ export default function Calendar() {
     } catch {
       payload = null;
     }
-    if (!payload || !workspaceId) return;
+    if (!payload || !orgId) return;
 
     const sourceDate = parseISO(payload.sourceScheduledAtIso);
     const targetDate = new Date(day);
     targetDate.setHours(hour, sourceDate.getMinutes(), sourceDate.getSeconds(), 0);
 
     try {
-      await rescheduleCalendarEventForUser(workspaceId, payload.id, payload.kind, targetDate.toISOString());
+      await rescheduleCalendarEventForUser(orgId, payload.id, payload.kind, targetDate.toISOString());
       await fetchEvents();
     } catch (err) {
       toast({ title: "Error", description: "Failed to reschedule", variant: "destructive" });
@@ -670,7 +670,7 @@ export default function Calendar() {
                       openQuickAddAt(dateAtHour(day, hour));
                     }}
                     onDragOver={(e) => {
-                      if (!workspaceId) return;
+                      if (!orgId) return;
                       e.preventDefault();
                       setDragOverKey(dropKey);
                       e.dataTransfer.dropEffect = "move";
@@ -727,7 +727,7 @@ export default function Calendar() {
                   )}
                   onClick={() => openQuickAddAt(dateAtHour(currentDate, hour))}
                   onDragOver={(e) => {
-                    if (!workspaceId) return;
+                    if (!orgId) return;
                     e.preventDefault();
                     setDragOverKey(`${format(currentDate, "yyyy-MM-dd")}__${hour}`);
                     e.dataTransfer.dropEffect = "move";

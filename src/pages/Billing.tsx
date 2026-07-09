@@ -11,7 +11,6 @@ import { toast } from "sonner";
 
 type PlanLimits = {
   max_users?: number | null;
-  max_workspaces?: number | null;
   max_posts_month?: number | null;
   max_media_gb?: number | null;
   ai_credits_month?: number | null;
@@ -39,7 +38,7 @@ export default function Billing() {
   const { orgId, isAdmin } = useAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [sub, setSub] = useState<Sub | null>(null);
-  const [usage, setUsage] = useState({ posts: 0, stories: 0, members: 0, workspaces: 0 });
+  const [usage, setUsage] = useState({ posts: 0, stories: 0, members: 0 });
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState<string | null>(null);
 
@@ -52,7 +51,7 @@ export default function Billing() {
   const load = async () => {
     setLoading(true);
     try {
-      const [plansRes, subRes, postsRes, storiesRes, membersRes, wsRes] = await Promise.all([
+      const [plansRes, subRes, postsRes, storiesRes, membersRes] = await Promise.all([
         supabase.from("plans").select("*").order("price_month", { ascending: true }),
         supabase.from("subscriptions").select("*").eq("organization_id", orgId!).maybeSingle(),
         supabase
@@ -70,10 +69,6 @@ export default function Billing() {
           .select("id", { count: "exact", head: true })
           .eq("organization_id", orgId!)
           .eq("status", "active"),
-        supabase
-          .from("workspaces")
-          .select("id", { count: "exact", head: true })
-          .eq("organization_id", orgId!),
       ]);
 
       const rawPlans = (plansRes.data ?? []) as any[];
@@ -83,7 +78,6 @@ export default function Billing() {
         posts: postsRes.count ?? 0,
         stories: storiesRes.count ?? 0,
         members: membersRes.count ?? 0,
-        workspaces: wsRes.count ?? 0,
       });
     } catch (e: any) {
       console.error(e);
@@ -183,7 +177,7 @@ export default function Billing() {
             {usageRow("Posts this month", usage.posts, currentPlan?.limits?.max_posts_month ?? null)}
             {usageRow("Stories this month", usage.stories, null)}
             {usageRow("Members", usage.members, currentPlan?.limits?.max_users ?? null)}
-            {usageRow("Workspaces", usage.workspaces, currentPlan?.limits?.max_workspaces ?? null)}
+            
           </CardContent>
         </Card>
 
@@ -214,10 +208,6 @@ export default function Billing() {
                       <li className="flex items-center gap-2">
                         <Check className="h-3.5 w-3.5 text-primary" />
                         {limits.max_users ? `${limits.max_users} members` : "Unlimited members"}
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="h-3.5 w-3.5 text-primary" />
-                        {limits.max_workspaces ? `${limits.max_workspaces} workspaces` : "Unlimited workspaces"}
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-3.5 w-3.5 text-primary" />

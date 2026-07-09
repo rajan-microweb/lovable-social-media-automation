@@ -17,7 +17,7 @@ let authState: {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
-  workspaceId?: string | null;
+  orgId?: string | null;
 };
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -99,7 +99,7 @@ describe("Smoke tests for protected routes", () => {
       user: { id: "u1" } as unknown as User,
       loading: false,
       isAdmin: false,
-      workspaceId: "u1",
+      orgId: "u1",
     };
 
     const posts: Post[] = [];

@@ -58,7 +58,7 @@ const postSchema = z.object({
 });
 
 export default function CreatePost() {
-  const { user, workspaceId } = useAuth();
+  const { user, orgId } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
@@ -68,7 +68,7 @@ export default function CreatePost() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [pendingTemplate, setPendingTemplate] = useState<any | null>(null);
   const { data: templatesData, isLoading: templatesLoading, isFetching: templatesFetching } = useTemplates({
-    workspaceId: workspaceId || undefined,
+    orgId: orgId || undefined,
     kind: "post",
     includeGlobal: true,
     sort: "updated_desc",
@@ -436,7 +436,7 @@ export default function CreatePost() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!user || !workspaceId) {
+    if (!user || !orgId) {
       toast.error("Workspace not ready. Please try again.");
       return;
     }
@@ -557,7 +557,7 @@ export default function CreatePost() {
 
       const { error } = await supabase.from("posts").insert({
         user_id: user!.id,
-        workspace_id: workspaceId,
+        organization_id: orgId,
         type_of_post: data.type_of_post,
         platforms: data.platforms,
         account_type: data.account_type ?? null,
