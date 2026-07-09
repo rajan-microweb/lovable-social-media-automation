@@ -9,19 +9,23 @@ import { Progress } from "@/components/ui/progress";
 import { Loader2, Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 
+type PlanLimits = {
+  max_users?: number | null;
+  max_workspaces?: number | null;
+  max_posts_month?: number | null;
+  max_media_gb?: number | null;
+  ai_credits_month?: number | null;
+};
+
 type Plan = {
   id: string;
   code: string;
   name: string;
-  price_month: number;
-  price_year: number;
-  currency: string;
-  max_users: number | null;
-  max_workspaces: number | null;
-  max_posts_month: number | null;
-  max_media_gb: number | null;
-  ai_credits_month: number | null;
+  description: string | null;
+  price_monthly_cents: number;
+  price_yearly_cents: number;
   features: any;
+  limits: PlanLimits;
 };
 
 type Sub = {
