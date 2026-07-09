@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ChevronRight, Crown } from "lucide-react";
+import { TenantSwitcher } from "./TenantSwitcher";
 
 export function Navbar() {
   const { user, isAdmin } = useAuth();
@@ -57,11 +58,15 @@ export function Navbar() {
 
   return (
     <header className="h-16 border-b border-border/60 bg-card/80 backdrop-blur-sm flex items-center px-4 sticky top-0 z-50 shadow-sm">
-      {/* Left: sidebar trigger */}
+      {/* Left: sidebar trigger + tenant switcher */}
       <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
+      <div className="ml-3">
+        <TenantSwitcher />
+      </div>
 
       {/* Spacer */}
       <div className="flex-1" />
+
 
       {/* Right: user profile pill */}
       {profileLoading ? (
