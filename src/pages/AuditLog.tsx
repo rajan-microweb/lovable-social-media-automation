@@ -16,14 +16,14 @@ import { Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 type AuditRow = {
-  id: string;
+  id: number;
   action: string;
   resource_type: string | null;
   resource_id: string | null;
   user_id: string | null;
   created_at: string;
   meta: any;
-  ip: string | null;
+  ip: unknown;
 };
 
 export default function AuditLog() {
@@ -47,7 +47,7 @@ export default function AuditLog() {
         .eq("organization_id", orgId!)
         .order("created_at", { ascending: false })
         .limit(200);
-      const list = (data ?? []) as AuditRow[];
+      const list = (data ?? []) as unknown as AuditRow[];
       setRows(list);
       const ids = Array.from(new Set(list.map((r) => r.user_id).filter(Boolean))) as string[];
       if (ids.length) {
