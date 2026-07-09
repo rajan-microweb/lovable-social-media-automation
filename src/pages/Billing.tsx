@@ -76,7 +76,8 @@ export default function Billing() {
           .eq("organization_id", orgId!),
       ]);
 
-      setPlans((plansRes.data ?? []) as Plan[]);
+      const rawPlans = (plansRes.data ?? []) as any[];
+      setPlans(rawPlans.map((p) => ({ ...p, limits: (p.limits ?? {}) as PlanLimits })) as Plan[]);
       setSub((subRes.data as Sub) ?? null);
       setUsage({
         posts: postsRes.count ?? 0,
