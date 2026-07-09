@@ -71,6 +71,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setOrgId(activeOrg);
       setWorkspaceId(activeWs);
       setNeedsOnboarding(!activeOrg);
+      setActiveTenantHeaders(activeOrg, activeWs);
+
 
       // 3. Admin flag = ADMIN or OWNER in the active org.
       if (activeOrg) {
