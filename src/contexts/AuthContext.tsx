@@ -137,6 +137,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setWorkspaceId(null);
     setIsAdmin(false);
     setNeedsOnboarding(false);
+    setActiveTenantHeaders(null, null);
     navigate("/auth");
   };
 
