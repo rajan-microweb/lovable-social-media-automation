@@ -26,6 +26,7 @@ import Templates from "./pages/Templates";
 import History from "./pages/History";
 import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
+import AcceptInvite from "./pages/AcceptInvite";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/invite/:token" element={<AcceptInvite />} />
             <Route
               path="/dashboard"
               element={
