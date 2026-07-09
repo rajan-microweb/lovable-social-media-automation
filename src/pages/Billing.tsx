@@ -213,10 +213,6 @@ export default function Billing() {
                         <Check className="h-3.5 w-3.5 text-primary" />
                         {limits.max_posts_month ? `${limits.max_posts_month} posts/mo` : "Unlimited posts"}
                       </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="h-3.5 w-3.5 text-primary" />
-                        {limits.max_posts_month ? `${limits.max_posts_month} posts/mo` : "Unlimited posts"}
-                      </li>
                       {limits.ai_credits_month != null && (
                         <li className="flex items-center gap-2">
                           <Check className="h-3.5 w-3.5 text-primary" />
