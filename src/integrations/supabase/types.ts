@@ -858,6 +858,8 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_organization_id: string | null
+          active_workspace_id: string | null
           avatar_url: string | null
           created_at: string
           email: string
@@ -865,6 +867,8 @@ export type Database = {
           name: string
         }
         Insert: {
+          active_organization_id?: string | null
+          active_workspace_id?: string | null
           avatar_url?: string | null
           created_at?: string
           email: string
@@ -872,13 +876,30 @@ export type Database = {
           name: string
         }
         Update: {
+          active_organization_id?: string | null
+          active_workspace_id?: string | null
           avatar_url?: string | null
           created_at?: string
           email?: string
           id?: string
           name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_active_organization_id_fkey"
+            columns: ["active_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_active_workspace_id_fkey"
+            columns: ["active_workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       publish_jobs: {
         Row: {
@@ -1191,42 +1212,6 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      user_context: {
-        Row: {
-          active_organization_id: string | null
-          active_workspace_id: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          active_organization_id?: string | null
-          active_workspace_id?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          active_organization_id?: string | null
-          active_workspace_id?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_context_active_organization_id_fkey"
-            columns: ["active_organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "user_context_active_workspace_id_fkey"
-            columns: ["active_workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
