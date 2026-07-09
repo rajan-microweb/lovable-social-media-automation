@@ -88,12 +88,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Persist context if it wasn't set yet.
         if (!ctx?.active_organization_id || ctx?.active_workspace_id !== activeWs) {
-          await supabase.from("user_context").upsert({
-            user_id: userId,
+          await supabase.from("profiles").update({
             active_organization_id: activeOrg,
             active_workspace_id: activeWs,
-          });
+          }).eq("id", userId);
         }
+
       } else {
         setIsAdmin(false);
       }
