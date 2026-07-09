@@ -12,6 +12,8 @@ import {
   Settings,
   LayoutTemplate,
   History,
+  CreditCard,
+  Gauge,
 } from "lucide-react";
 import { Fragment, useState, type ElementType } from "react";
 import { NavLink } from "@/components/NavLink";
