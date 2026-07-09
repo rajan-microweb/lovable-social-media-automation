@@ -35,7 +35,7 @@ type SaveTemplatePayload = {
   type_of_story?: string | null;
   overrides: Record<string, any>;
   category?: string | null;
-  visibility?: "workspace" | "team" | "public";
+  visibility?: "organization" | "team" | "public";
   owner_type?: "user" | "team";
   team_id?: string | null;
 };
@@ -44,7 +44,7 @@ function withFutureMeta(payload: SaveTemplatePayload): Record<string, any> {
   const baseOverrides = payload.overrides || {};
   const meta = {
     category: payload.category || null,
-    visibility: payload.visibility || "workspace",
+    visibility: payload.visibility || "organization",
     owner_type: payload.owner_type || "user",
     team_id: payload.team_id || null,
   };
