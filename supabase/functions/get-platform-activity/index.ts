@@ -301,15 +301,16 @@ Deno.serve(async (req) => {
     // -----------------------------
     // Live: fetch integrations
     // -----------------------------
-    // For workspace analytics, include all workspace members.
+    // For org-scoped analytics, include all org members' integrations.
     let memberUserIds = [user.id];
     if (payload.organization_id) {
-      // Ensure the requester is a member of the workspace.
+      // Ensure the requester is an active member of the organization.
       const { data: memberCheck, error: memberCheckError } = await supabase
-        .from("workspace_members")
+        .from("organization_members")
         .select("user_id")
         .eq("organization_id", effectiveWorkspaceId)
         .eq("user_id", user.id)
+        .eq("status", "active")
         .maybeSingle();
 
       if (memberCheckError) throw memberCheckError;
@@ -321,9 +322,10 @@ Deno.serve(async (req) => {
       }
 
       const { data: memberRows, error: memberRowsError } = await supabase
-        .from("workspace_members")
+        .from("organization_members")
         .select("user_id")
-        .eq("organization_id", effectiveWorkspaceId);
+        .eq("organization_id", effectiveWorkspaceId)
+        .eq("status", "active");
 
       if (memberRowsError) throw memberRowsError;
       memberUserIds = (memberRows || []).map((r: any) => String(r.user_id));

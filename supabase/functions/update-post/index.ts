@@ -85,9 +85,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // organization_id = user_id for personal workspaces
-    const organization_id = user_id;
-
     if (!post_id) {
       return new Response(
         JSON.stringify({ error: 'post_id is required' }),
@@ -112,29 +109,7 @@ Deno.serve(async (req) => {
 
     const updateData = validationResult.data;
 
-    // Verify workspace membership
-    const { data: membership, error: membershipError } = await supabase
-      .from('workspace_members')
-      .select('user_id')
-      .eq('organization_id', organization_id)
-      .eq('user_id', user_id)
-      .maybeSingle();
-
-    if (membershipError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to verify workspace membership' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!membership) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - Not a workspace member' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Verify post belongs to workspace
+    // Load the post and verify caller is an active member of its organization.
     const { data: post, error: fetchError } = await supabase
       .from('posts')
       .select('organization_id')
@@ -148,9 +123,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (post.organization_id !== organization_id) {
+    const { data: membership, error: membershipError } = await supabase
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', post.organization_id)
+      .eq('user_id', user_id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (membershipError) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized - Wrong workspace' }),
+        JSON.stringify({ error: 'Failed to verify organization membership' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Not a member of this organization' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

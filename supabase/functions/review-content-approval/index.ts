@@ -57,31 +57,6 @@ Deno.serve(async (req) => {
 
     const { content_type, content_id, decision, note } = parsed.data;
 
-    // organization_id = reviewer's user_id for personal workspaces
-    const organization_id = reviewerId;
-
-    // Enforce workspace admin-only reviews.
-    const { data: adminMembership, error: membershipError } = await supabaseAdmin
-      .from("workspace_members")
-      .select("role")
-      .eq("organization_id", organization_id)
-      .eq("user_id", reviewerId)
-      .eq("role", "ADMIN")
-      .maybeSingle();
-
-    if (membershipError) {
-      return new Response(
-        JSON.stringify({ error: "Failed to verify workspace membership" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    if (!adminMembership) {
-      return new Response(
-        JSON.stringify({ error: "Forbidden - Only workspace admins can review approvals" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const table = content_type === "post" ? "posts" : "stories";
 
     // Load the content and validate it's pending approval.
@@ -98,9 +73,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (contentRow.organization_id !== organization_id) {
+    // Enforce org admin/owner-only reviews.
+    const { data: adminMembership, error: membershipError } = await supabaseAdmin
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", contentRow.organization_id)
+      .eq("user_id", reviewerId)
+      .eq("status", "active")
+      .in("role", ["ADMIN", "OWNER"])
+      .maybeSingle();
+
+    if (membershipError) {
       return new Response(
-        JSON.stringify({ error: "Content does not belong to the provided workspace" }),
+        JSON.stringify({ error: "Failed to verify organization membership" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!adminMembership) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden - Only organization admins can review approvals" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
