@@ -30,17 +30,21 @@ function fallbackTitle(opts: { contentType: ContentType; text?: string | null; t
 
 export async function fetchPendingApprovalsForWorkspace(workspaceId: string): Promise<ContentApprovalItem[]> {
   const { data: approvals, error: approvalsError } = await supabase
-    .from("content_approvals")
+    .from("content_reviews")
     .select(
-      "id,workspace_id,content_type,content_id,approval_status,requested_by,requested_at,note,reviewed_by,reviewed_at"
+      "id,workspace_id,content_type,content_id,status,requested_by,requested_at,note,reviewed_by,reviewed_at"
     )
     .eq("workspace_id", workspaceId)
-    .eq("approval_status", "pending")
+    .eq("kind", "approval")
+    .eq("status", "pending")
     .order("requested_at", { ascending: false });
 
   if (approvalsError) throw approvalsError;
 
-  const rows = (approvals ?? []) as Array<ContentApprovalItem>;
+  const rows = ((approvals ?? []) as Array<any>).map((r) => ({
+    ...r,
+    approval_status: r.status,
+  })) as Array<ContentApprovalItem>;
 
   const postIds = rows.filter((r) => r.content_type === "post").map((r) => r.content_id);
   const storyIds = rows.filter((r) => r.content_type === "story").map((r) => r.content_id);

@@ -147,24 +147,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update the approvals row with the reviewed outcome.
+    // Update the reviews row with the reviewed outcome.
     const approvalStatus = decision === "approved" ? "approved" : "rejected";
     const requestedBy = contentRow.user_id;
 
     await supabaseAdmin
-      .from("content_approvals")
+      .from("content_reviews")
       .upsert(
         {
           workspace_id,
+          kind: "approval",
           content_type,
           content_id,
-          approval_status: approvalStatus,
+          status: approvalStatus,
           requested_by: requestedBy,
           reviewed_by: reviewerId,
           reviewed_at: nowIso,
           note: note ?? null,
         },
-        { onConflict: "content_type,content_id" }
+        { onConflict: "kind,content_type,content_id" }
       );
 
     return new Response(JSON.stringify({ success: true }), {
