@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       .in("id", post_ids);
     const rows = posts ?? [];
     if (rows.length !== post_ids.length || rows.some((p) => p.organization_id !== orgId)) {
-      return jsonResponse({ error: "You can only update posts in the active workspace" }, 403);
+      return jsonResponse({ error: "You can only update posts in the active organization" }, 403);
     }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };

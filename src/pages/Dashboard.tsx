@@ -473,7 +473,7 @@ export default function Dashboard() {
     },
     {
       title: "Settings",
-      description: "Profile, integrations, and workspace controls",
+      description: "Profile, integrations, and organization controls",
       icon: SettingsIcon,
       kind: "navigate",
       path: "/settings",
@@ -557,7 +557,7 @@ export default function Dashboard() {
               Welcome back, {displayName}! <Sparkles className="h-5 w-5 text-yellow-500 animate-pulse" />
             </h2>
             <p className="text-muted-foreground mt-1 text-sm md:text-base max-w-xl">
-              Easily manage posts, track stories, and monitor publishing status in your social media automation workspace.
+              Easily manage posts, track stories, and monitor publishing status in your social media automation account.
             </p>
           </div>
           <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-primary/5 to-transparent pointer-events-none rounded-r-lg" />

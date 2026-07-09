@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       .in("id", story_ids);
     const rows = stories ?? [];
     if (rows.length !== story_ids.length || rows.some((s) => s.organization_id !== orgId)) {
-      return jsonResponse({ error: "You can only update stories in the active workspace" }, 403);
+      return jsonResponse({ error: "You can only update stories in the active organization" }, 403);
     }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };

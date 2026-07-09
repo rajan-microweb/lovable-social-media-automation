@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     const rows = stories ?? [];
     const unauthorized = rows.filter((s) => s.organization_id !== orgId);
     if (unauthorized.length > 0 || rows.length !== story_ids.length) {
-      return jsonResponse({ error: "You can only delete stories from the active workspace" }, 403);
+      return jsonResponse({ error: "You can only delete stories from the active organization" }, 403);
     }
 
     const mediaFiles: string[] = [];

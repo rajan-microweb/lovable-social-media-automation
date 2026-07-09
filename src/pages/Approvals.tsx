@@ -50,7 +50,7 @@ export default function Approvals() {
   const handleDecision = async (item: ContentApprovalItem, decision: "approved" | "rejected") => {
     if (!orgId) return;
     if (!isAdmin) {
-      toast.error("Only workspace admins can review approvals.");
+      toast.error("Only organization admins can review approvals.");
       return;
     }
 
@@ -76,8 +76,8 @@ export default function Approvals() {
 
   const headerSubtitle = useMemo(() => {
     if (!APPROVALS_ENABLED) return "";
-    if (!orgId) return "Select a workspace to review approvals.";
-    if (isAdmin) return "Review pending workspace approvals.";
+    if (!orgId) return "Select an organization to review approvals.";
+    if (isAdmin) return "Review pending organization approvals.";
     return "You can view pending approvals (review restricted to admins).";
   }, [orgId, isAdmin]);
 

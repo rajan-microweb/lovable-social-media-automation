@@ -111,7 +111,7 @@ export default function Onboarding() {
           </div>
           <CardTitle className="text-2xl">Create your organization</CardTitle>
           <CardDescription>
-            Set up a workspace for your team. You can invite members and configure more later.
+            Get started by creating your organization. You can invite members and configure more later.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -389,7 +389,7 @@ export default function Library() {
           </div>
           <div className="text-center space-y-2">
             <h1 className="text-2xl font-bold">Initializing Library</h1>
-            <p className="text-muted-foreground">Please wait while we connect to your workspace...</p>
+            <p className="text-muted-foreground">Please wait while we connect to your organization...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -560,7 +560,7 @@ export default function Library() {
                   <p className="text-muted-foreground max-w-sm text-center mt-2">
                     {query || activeTab !== "all" 
                       ? "Try adjusting your filters or search query to find what you're looking for." 
-                      : "Start by uploading your first image, video or document to your workspace library."}
+                      : "Start by uploading your first image, video or document to your library."}
                   </p>
                   {(query || activeTab !== "all") && (
                     <Button variant="link" onClick={() => { setQuery(""); setActiveTab("all"); }}>

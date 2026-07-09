@@ -287,7 +287,7 @@ export default function Templates() {
   const stats = useMemo(
     () => ({
       total: totalCount,
-      workspaceOnly: allTemplates.filter((t) => t.organization_id).length,
+      organizationOnly: allTemplates.filter((t) => t.organization_id).length,
     }),
     [allTemplates, totalCount]
   );
@@ -550,7 +550,7 @@ export default function Templates() {
           <Card>
             <CardContent className="pt-6">
               <p className="text-xs text-muted-foreground">Active Templates</p>
-              <p className="text-2xl font-semibold">{stats.workspaceOnly}</p>
+              <p className="text-2xl font-semibold">{stats.organizationOnly}</p>
             </CardContent>
           </Card>
         </div>
@@ -1197,7 +1197,7 @@ export default function Templates() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete template?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The template will be removed from your workspace.
+              This action cannot be undone. The template will be removed from your organization.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

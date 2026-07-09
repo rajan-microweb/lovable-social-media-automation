@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Maximum 50 posts can be deleted at once" }, 400);
     }
 
-    // Verify all posts belong to the active workspace.
+    // Verify all posts belong to the active organization.
     const { data: posts, error: fetchError } = await supabase
       .from("posts")
       .select("id, organization_id, image, video, pdf")
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
     const unauthorized = posts.filter((p) => p.organization_id !== orgId);
     if (unauthorized.length > 0 || posts.length !== post_ids.length) {
-      return jsonResponse({ error: "You can only delete posts from the active workspace" }, 403);
+      return jsonResponse({ error: "You can only delete posts from the active organization" }, 403);
     }
 
     // Cleanup media files.

@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     if (fetchErr) return jsonResponse({ error: "Error fetching story" }, 500);
     if (!story) return jsonResponse({ success: true, message: "Story already deleted" });
     if (story.organization_id !== orgId) {
-      return jsonResponse({ error: "Unauthorized - wrong workspace" }, 403);
+      return jsonResponse({ error: "Unauthorized - wrong organization" }, 403);
     }
 
     const { error } = await supabase

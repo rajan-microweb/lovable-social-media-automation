@@ -214,7 +214,7 @@ export function EventDetailModal({ event, open, onOpenChange, onDelete, onAfterR
 
           {APPROVALS_ENABLED && event.status === SOCIAL_STATUS_PENDING_APPROVAL && (
             <div className="text-sm bg-chart-2/10 border border-chart-2/30 rounded-md px-3 py-2 text-chart-2">
-              This content is pending workspace approval. Publishing will start once it is approved.
+              This content is pending organization approval. Publishing will start once it is approved.
             </div>
           )}
 
